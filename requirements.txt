@@ -1,0 +1,9 @@
+matplotlib
+networkx
+normflows
+numpy
+pandas
+pytorch-lightning<2.0.0
+torch
+wandb
+pywhy-graphs

@@ -1,0 +1,114 @@
+[project]
+name = "gendis"
+version = "0.0.1"
+dependencies = [
+    "matplotlib",
+    "networkx",
+    "normflows",
+    "numpy",
+    "pandas",
+    "pytorch-lightning<2.0.0",
+    "torch",
+    "wandb",
+    "pywhy-graphs",
+]
+requires-python = ">=3.9"
+authors = [
+    { name = "Adam Li", email = "adam.li@columbia.edu" },
+    { name = "Yushu Pan", email = "yushu.pan@columbia.edu" },
+]
+maintainers = [{ name = "Adam Li  ", email = "adam.li@columbia.edu" }]
+description = "Generalized disentanglement of causal representations."
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["causality", "deep learning", "pytorch", "representation learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+]
+
+[project.optional-dependencies]
+doc = [
+  'memory-profiler',
+  'numpydoc',
+  'pooch',
+  'pydata-sphinx-theme',
+  'sphinx==7.2.6',
+  'sphinx-copybutton',
+  'sphinx-design',
+  'sphinx-gallery',
+  'sphinx-issues',
+  'sphinx_autodoc_typehints',
+  'sphinxcontrib-bibtex',
+  'portray',
+  'matplotlib',
+  'ipython',
+  'nbsphinx',
+  'pandas',
+  'seaborn',
+  'joblib',
+  'pygraphviz',
+  'pgmpy',
+]
+style = [
+  "pre-commit",
+  'black',
+  'codespell',
+  'isort',
+  'pydocstyle',
+  'pydocstyle[toml]',
+  'rstcheck',
+  'ruff',
+  'toml-sort',
+  'yamllint',
+  'mypy',
+  'flake8',
+  'bandit',
+  'toml',
+]
+test = [
+  'joblib',
+  'pandas',
+  'pytest',
+  'pytest-cov',
+]
+
+[project.urls]
+Homepage = "https://example.com"
+Documentation = "https://readthedocs.org"
+Repository = "https://github.com/me/spam.git"
+"Bug Tracker" = "https://github.com/me/spam/issues"
+Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+(
+      __pycache__
+    | \.github
+    | setup.py
+    | doc/
+)
+'''
+
+[tool.isort]
+profile = 'black'
+multi_line_output = 3
+line_length = 100
+py_version = 38
+extend_skip_glob = ['setup.py', 'doc/*', 'pywhy_graphs/__init__.py']
+
+[tool.pytest.ini_options]
+minversion = '6.0'
+addopts = '--durations 20 --junit-xml=junit-results.xml --verbose'
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+extend-exclude = ['doc', 'setup.py']
+line-length = 88
+ignore = ['E731']
+
+[tool.ruff.per-file-ignores]
+'__init__.py' = ['F401']
