@@ -120,9 +120,10 @@ class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
     ) -> None:
         # define the distributions over the latent space of variables
         if q0 is None:
-            assert (
-                intervention_targets_per_distr is not None
-            ), "intervention_targets_per_distr must be provided for parametric base distribution"
+            if intervention_targets_per_distr is None:
+                raise RuntimeError(
+                    "intervention_targets_per_distr must be provided for parametric base distribution"
+                )
             q0 = ClusteredCausalDistribution(
                 adjacency_matrix=graph,
                 cluster_sizes=cluster_sizes,

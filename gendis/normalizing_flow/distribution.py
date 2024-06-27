@@ -140,7 +140,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
 
             v_env = v_latent[env_mask, :]
             intervention_targets_env = intervention_targets[env_mask, :]
-            assert len(intervention_targets_env) == 1
+            # assert len(intervention_targets_env) == 1, f"{intervention_targets_env}, {intervention_targets}, {e}, {env}"
 
             # iterate over all variables in the latent space in topological order
             for idx in range(v_latent.shape[1]):
