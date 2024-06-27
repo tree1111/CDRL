@@ -13,7 +13,7 @@ class MultiEnvNoise(ABC):
     ----------
     latent_dim: int
         Latent dimension.
-    intervention_targets_per_env: Tensor, shape (num_envs, latent_dim)
+    intervention_targets_per_distr: Tensor, shape (num_envs, latent_dim)
         Intervention targets per environment, with 1 indicating that the variable is intervened on
         and 0 indicating that the variable is not intervened on. This variable also implicitly defines
         the number of environments.
@@ -39,14 +39,14 @@ class MultiEnvNoise(ABC):
     def __init__(
         self,
         latent_dim: int,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
         mean: float = 0.0,
         std: float = 1.0,
         shift: bool = False,
         shift_type: str = "mean",
     ) -> None:
         self.latent_dim = latent_dim
-        self.intervention_targets = intervention_targets_per_env
+        self.intervention_targets = intervention_targets_per_distr
         self.mean = mean
         self.std = std
         self.shift = shift
@@ -61,7 +61,7 @@ class MultiEnvNoise(ABC):
         ----------
         e: int
             Environment index. Must be in {0, ..., num_envs-1}. The number of environments is implicitly defined
-            by the intervention_targets_per_env variable.
+            by the intervention_targets_per_distr variable.
         size: int
             Number of samples to generate. Default: 1.
 
@@ -83,7 +83,7 @@ class MultiEnvNoise(ABC):
             Samples from the noise distribution.
         e: int
             Environment index. Must be in {0, ..., num_envs-1}. The number of environments is implicitly defined
-            by the intervention_targets_per_env variable.
+            by the intervention_targets_per_distr variable.
 
         Returns
         -------
@@ -97,7 +97,7 @@ class GaussianNoise(MultiEnvNoise):
     def __init__(
         self,
         latent_dim: int,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
         mean: float = 0.0,
         std: float = 1.0,
         shift: bool = False,
@@ -105,20 +105,20 @@ class GaussianNoise(MultiEnvNoise):
     ) -> None:
         super().__init__(
             latent_dim=latent_dim,
-            intervention_targets_per_env=intervention_targets_per_env,
+            intervention_targets_per_distr=intervention_targets_per_distr,
             mean=mean,
             std=std,
             shift=shift,
             shift_type=shift_type,
         )
-        self.means_per_env, self.stds_per_env = self.setup_params(intervention_targets_per_env)
+        self.means_per_env, self.stds_per_env = self.setup_params(intervention_targets_per_distr)
 
     def setup_params(
-        self, intervention_targets_per_env: Tensor
+        self, intervention_targets_per_distr: Tensor
     ) -> tuple[dict[int, Tensor], dict[int, Tensor]]:
         means_per_env = {}
         stds_per_env = {}
-        for e in range(intervention_targets_per_env.shape[0]):
+        for e in range(intervention_targets_per_distr.shape[0]):
             if self.shift_type == "mean":
                 stds = torch.ones(self.latent_dim) * self.std  # stds_per_env per dimension
                 stds_per_env[e] = stds
@@ -126,9 +126,9 @@ class GaussianNoise(MultiEnvNoise):
                 means = torch.ones(self.latent_dim) * self.mean  # means_per_env per dimension
 
                 # shift mean up or down if mechanism is intervened on
-                if intervention_targets_per_env is not None and self.shift:
+                if intervention_targets_per_distr is not None and self.shift:
                     for i in range(self.latent_dim):
-                        if intervention_targets_per_env[e][i] == 1:
+                        if intervention_targets_per_distr[e][i] == 1:
                             coin_flip = torch.randint(0, 2, (1,)).item()  # 0 or 1
                             factor = 2
                             means[i] = (
@@ -145,9 +145,9 @@ class GaussianNoise(MultiEnvNoise):
                 stds = torch.ones(self.latent_dim) * self.std  # stds_per_env per dimension
 
                 # shift std up or down if mechanism is intervened on
-                if intervention_targets_per_env is not None and self.shift:
+                if intervention_targets_per_distr is not None and self.shift:
                     for i in range(self.latent_dim):
-                        if intervention_targets_per_env[e][i] == 1:
+                        if intervention_targets_per_distr[e][i] == 1:
                             coin_flip = torch.randint(0, 2, (1,)).item()  # 0 or 1
                             std_scaling_factor = (
                                 Uniform(0.25, 0.75).sample((1,))

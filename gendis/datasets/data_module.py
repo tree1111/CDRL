@@ -24,7 +24,7 @@ class MultiEnvDataModule(LightningDataModule):
         Batch size.
     num_workers: int
         Number of workers for the data loaders.
-    intervention_targets_per_env: Tensor, shape (num_envs, num_causal_variables)
+    intervention_targets_per_distr: Tensor, shape (num_envs, num_causal_variables)
         Intervention targets per environment, with 1 indicating that the variable is intervened on.
     log_dir: Optional[Path]
         Directory to save summary statistics and plots to. Default: None.
@@ -53,7 +53,7 @@ class MultiEnvDataModule(LightningDataModule):
         num_samples_per_env: int,
         batch_size: int,
         num_workers: int,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
         log_dir: Optional[Path] = None,
         intervention_target_misspec: bool = False,
         intervention_target_perm: Optional[list[int]] = None,
@@ -63,7 +63,7 @@ class MultiEnvDataModule(LightningDataModule):
         self.num_samples_per_env = num_samples_per_env
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.intervention_targets_per_env = intervention_targets_per_env
+        self.intervention_targets_per_distr = intervention_targets_per_distr
         self.log_dir = log_dir
 
         self.intervention_target_misspec = intervention_target_misspec
@@ -73,11 +73,11 @@ class MultiEnvDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         latent_dim = self.medgp.latent_scm.latent_dim
-        num_envs = self.intervention_targets_per_env.shape[0]
+        num_envs = self.intervention_targets_per_distr.shape[0]
 
         x, v, u, e, intervention_targets, log_prob = self.medgp.sample(
             self.num_samples_per_env,
-            intervention_targets_per_env=self.intervention_targets_per_env,
+            intervention_targets_per_distr=self.intervention_targets_per_distr,
         )
         if self.intervention_target_misspec:
             assert num_envs == latent_dim + 1, "only works if num_envs == num_causal_variables + 1"

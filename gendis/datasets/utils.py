@@ -27,7 +27,7 @@ def summary_statistics(
         "x": x_summary_stats,
         "v": v_summary_stats,
         "e": e_summary_stats,
-        "intervention_targets_per_env": intervention_targets_summary_stats,
+        "intervention_targets_per_distr": intervention_targets_summary_stats,
     }
 
 

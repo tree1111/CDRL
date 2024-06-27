@@ -5,10 +5,9 @@ import random
 from collections import defaultdict
 from os.path import join
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import joblib
-import imodels
 import inspect
 import os.path
 import imodelsx.cache_save_utils
@@ -109,11 +108,11 @@ if __name__ == "__main__":
     )
 
     if args.use_cache and already_cached:
-        logging.info(f"cached version exists! Successfully skipping :)\n\n\n")
+        logging.info("cached version exists! Successfully skipping :)\n\n\n")
         exit(0)
     for k in sorted(vars(args)):
         logger.info("\t" + k + " " + str(vars(args)[k]))
-    logging.info(f"\n\n\tsaving to " + save_dir_unique + "\n")
+    logging.info("\n\n\tsaving to " + save_dir_unique + "\n")
 
     # set seed
     np.random.seed(args.seed)

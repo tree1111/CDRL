@@ -44,7 +44,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         self,
         adjacency_matrix: np.ndarray,
         cluster_sizes: np.ndarray,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
         fix_mechanisms: bool = False,
     ):
@@ -61,7 +61,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
             Each row/column is another cluster.
         cluster_sizes : np.ndarray of shape (n_clusters, 1)
             The size/dimensionality of each cluster.
-        intervention_targets_per_env : Tensor of shape (n_distributions, n_clusters)
+        intervention_targets_per_distr : Tensor of shape (n_distributions, n_clusters)
             The intervention targets for each cluster-variable in each environment.
         hard_interventions_per_distr : Tensor of shape (n_distributions, n_clusters)
             Whether the intervention target for each cluster-variable is hard (i.e.
@@ -73,7 +73,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
 
         self.adjacency_matrix = adjacency_matrix
         self.cluster_sizes = cluster_sizes
-        self.intervention_targets_per_env = intervention_targets_per_env
+        self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
 
         self.dag = nx.DiGraph(adjacency_matrix)
@@ -83,13 +83,13 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         coeff_values, coeff_values_requires_grad = set_initial_edge_coeffs(
             self.dag, min_val=-1.0, max_val=1.0, device=device
         )
-        environments = torch.ones(intervention_targets_per_env.shape[0], 1, device=device)
+        environments = torch.ones(intervention_targets_per_distr.shape[0], 1, device=device)
 
         # parametrize the trainable means for the noise distributions
         noise_means, noise_means_requires_grad = set_initial_noise_parameters(
             self.dag,
             fix_mechanisms,
-            intervention_targets_per_env,
+            intervention_targets_per_distr,
             environments=environments,
             min_val=-0.5,
             max_val=0.5,
@@ -100,7 +100,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         noise_stds, noise_stds_requires_grad = set_initial_noise_parameters(
             self.dag,
             fix_mechanisms,
-            intervention_targets_per_env,
+            intervention_targets_per_distr,
             environments=environments,
             min_val=0.5,
             max_val=1.5,
@@ -232,7 +232,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         Each row/column is another cluster.
     cluster_sizes : np.ndarray of shape (n_clusters, 1)
         The size/dimensionality of each cluster.
-    intervention_targets_per_env : Tensor of shape (n_distributions, n_clusters)
+    intervention_targets_per_distr : Tensor of shape (n_distributions, n_clusters)
         The intervention targets for each cluster-variable in each environment.
     hard_interventions_per_distr : Tensor of shape (n_distributions, n_clusters)
         Whether the intervention target for each cluster-variable is hard (i.e.
@@ -251,7 +251,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         self,
         adjacency_matrix: np.ndarray,
         cluster_sizes: np.ndarray,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
         fix_mechanisms: bool = False,
         n_flows: int = 3,
@@ -260,7 +260,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
     ):
         self.adjacency_matrix = adjacency_matrix
         self.cluster_sizes = cluster_sizes
-        self.intervention_targets_per_env = intervention_targets_per_env
+        self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.fix_mechanisms = fix_mechanisms
 

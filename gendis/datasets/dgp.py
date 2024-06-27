@@ -31,7 +31,7 @@ class MultiEnvDGP:
 
     Methods
     -------
-    sample(num_samples_per_env, intervention_targets_per_env) -> tuple[Tensor, ...]
+    sample(num_samples_per_env, intervention_targets_per_distr) -> tuple[Tensor, ...]
         Sample from the DGP.
     """
 
@@ -49,7 +49,7 @@ class MultiEnvDGP:
     def sample(
         self,
         num_samples_per_env: int,
-        intervention_targets_per_env: Tensor,
+        intervention_targets_per_distr: Tensor,
     ) -> tuple[Tensor, ...]:
         """
         Sample from the DGP.
@@ -58,7 +58,7 @@ class MultiEnvDGP:
         ----------
         num_samples_per_env: int
             Number of samples to generate per environment.
-        intervention_targets_per_env: Tensor, shape (num_envs, num_causal_variables)
+        intervention_targets_per_distr: Tensor, shape (num_envs, num_causal_variables)
             Intervention targets per environment, with 1 indicating that the variable is intervened on
             and 0 indicating that the variable is not intervened on. This variable also implicitly defines
             the number of environments.
@@ -78,7 +78,7 @@ class MultiEnvDGP:
         log_prob: Tensor, shape (num_samples_per_env * num_envs, 1)
             Ground-truth log probability of the samples.
         """
-        num_envs = intervention_targets_per_env.shape[0]
+        num_envs = intervention_targets_per_distr.shape[0]
         shape = (
             num_samples_per_env,
             num_envs,
@@ -91,7 +91,7 @@ class MultiEnvDGP:
         log_prob = torch.zeros((num_samples_per_env, num_envs, 1))
 
         for env in range(num_envs):
-            int_targets_env = intervention_targets_per_env[env, :]
+            int_targets_env = intervention_targets_per_distr[env, :]
 
             noise_samples_env = self.noise_generator.sample(env, size=num_samples_per_env)
             noise_log_prob_env = self.noise_generator.log_prob(noise_samples_env, env)
@@ -155,7 +155,7 @@ def make_multi_env_dgp(
         Dimension of the observed variables.
     adjacency_matrix: np.ndarray, shape (latent_dim, latent_dim)
         Adjacency matrix of the latent SCM.
-    intervention_targets_per_env: Tensor, shape (num_envs, latent_dim)
+    intervention_targets_per_distr: Tensor, shape (num_envs, latent_dim)
         Intervention targets per environment, with 1 indicating that the variable is intervened on
         and 0 indicating that the variable is not intervened on. This variable also implicitly defines
         the number of environments.
@@ -208,7 +208,7 @@ def make_multi_env_dgp(
         latent_scm = LinearSCM(
             adjacency_matrix=adjacency_matrix,
             latent_dim=latent_dim,
-            intervention_targets_per_env=intervention_targets_per_env,
+            intervention_targets_per_distr=intervention_targets_per_distr,
             coeffs_low=scm_coeffs_low,
             coeffs_high=scm_coeffs_high,
             coeffs_min_abs_value=coeffs_min_abs_value,
@@ -217,7 +217,7 @@ def make_multi_env_dgp(
         latent_scm = LocationScaleSCM(
             adjacency_matrix=adjacency_matrix,
             latent_dim=latent_dim,
-            intervention_targets_per_env=intervention_targets_per_env,
+            intervention_targets_per_distr=intervention_targets_per_distr,
             snr=snr,
         )
     else:
@@ -225,7 +225,7 @@ def make_multi_env_dgp(
 
     noise_generator = GaussianNoise(
         latent_dim=latent_dim,
-        intervention_targets_per_env=intervention_targets_per_env,
+        intervention_targets_per_distr=intervention_targets_per_distr,
         shift=shift_noise,
         shift_type=noise_shift_type,
     )

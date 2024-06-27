@@ -1,9 +1,47 @@
 from itertools import permutations
-import normflows as nf
-
+import numpy as np
 import torch
 from torch import Tensor
-from torchmetrics import SpearmanCorrCoef
+from torchmetrics import SpearmanCorrCoef, PearsonCorrCoef
+
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+
+
+def learned_vs_latents(v_hat: Tensor, v: Tensor, method="pearson"):
+    """Compute the mean correlation coefficient between the columns of v_hat and v.
+
+    Parameters
+    ----------
+    v_hat : Tensor of shape (n_samples, n_outputs)
+        Estimated tensor.
+    v : Tensor of shape (n_samples, n_outputs)
+        Ground-truth tensor.
+    method : str, optional
+        Method for computing CCoeff, by default "pearson"
+
+    Returns
+    -------
+    corr_coefficients : Tensor of shape (n_outputs,)
+        The mean correlation coefficient between the columns of v_hat and v.
+    """
+    if v_hat.shape != v.shape:
+        raise RuntimeError(f"v_hat and v must have the same shape, got {v_hat.shape} and {v.shape}")
+
+    if method == "pearson":
+        pearson = PearsonCorrCoef(num_outputs=v.shape[1])
+        corr_coefficients = torch.abs(pearson(v_hat, v))
+    elif method == "spearman":
+        spearman = SpearmanCorrCoef(num_outputs=v.shape[1])
+        corr_coefficients = torch.abs(spearman(v_hat, v))
+    elif method == "linear":
+        reg = LinearRegression(fit_intercept=True).fit(v_hat, v)
+        v_pred = reg.predict(v_hat)
+        r2s = r2_score(v, v_pred, multioutput="raw_values")
+        corr_coefficients = np.mean(
+            np.sqrt(r2s)
+        )  # To be comparable to MCC (this is the average of R = coefficient of multiple correlation)
+    return corr_coefficients
 
 
 def mean_correlation_coefficient(v_hat: Tensor, v: Tensor, method="pearson") -> Tensor:
@@ -45,22 +83,3 @@ def mean_correlation_coefficient(v_hat: Tensor, v: Tensor, method="pearson") -> 
     else:
         raise ValueError(f"Unknown correlation coefficient method: {method}")
     return corr_coefficients
-
-
-def make_spline_flows(
-    K: int,
-    latent_dim: int,
-    net_hidden_dim: int,
-    net_hidden_layers: int,
-    permutation: bool = True,
-) -> list[nf.flows.Flow]:
-    flows = []
-    for i in range(K):
-        flows += [
-            nf.flows.AutoregressiveRationalQuadraticSpline(
-                latent_dim, net_hidden_layers, net_hidden_dim
-            )
-        ]
-        if permutation:
-            flows += [nf.flows.LULinearPermute(latent_dim)]
-    return flows

@@ -9,23 +9,29 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 
-from .utils import mean_correlation_coefficient
+from .metrics import mean_correlation_coefficient
+from .encoder import (
+    ClusteredCausalEncoder,
+    NaiveClusteredCausalEncoder,
+    NonparametricClusteredCausalEncoder,
+    ParametricClusteredCausalEncoder,
+)
 
 
-def misspecify_adjacency(adjacency_matrix: np.ndarray):
-    if adjacency_matrix.shape[0] == 2 and np.sum(adjacency_matrix) == 0:
+def misspecify_adjacency(graph: np.ndarray):
+    if graph.shape[0] == 2 and np.sum(graph) == 0:
         # for 2 variables, if adjacency matrix is [[0, 0], [0, 0]], then
         # replace with [[0, 1], [0, 0]]
 
-        adjacency_matrix_out = np.zeros_like(adjacency_matrix)
-        adjacency_matrix_out[0, 1] = 1
-        return adjacency_matrix_out
-    elif adjacency_matrix.shape[0] > 2:
+        graph_out = np.zeros_like(graph)
+        graph_out[0, 1] = 1
+        return graph_out
+    elif graph.shape[0] > 2:
         raise ValueError(
             "Adjacency misspecification not supported for empty adjacency matrix for >2 variables"
         )
     else:
-        return adjacency_matrix.T
+        return graph.T
 
 
 class BaseNeuralClusteredASCMFlow(pl.LightningModule):
@@ -39,8 +45,6 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
 
     Attributes
     ----------
-    latent_dim : int
-        Dimensionality of the latent space.
     graph : np.ndarray, shape (num_nodes, num_nodes)
         Adjacency matrix of the causal graph assumed by the model. This is not necessarily
         the true adjacency matrix of the data generating process (see below).
@@ -53,8 +57,9 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         "cosine" or None. Default: None.
     lr_min : float
         Minimum learning rate for the scheduler. Default: 0.0.
-    encoder : CauCAEncoder
-        The CauCA encoder. Needs to be set in subclasses.
+    encoder : ClusteredCausalEncoder
+        The causal encoder. Needs to be set in subclasses. The inverse of the encoder is the
+        unmixing function.
 
     Methods
     -------
@@ -76,9 +81,9 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         Callback that is called before each optimizer step. It ensures that some gradients
         are set to zero to fix some causal mechanisms. See documentation of ParamMultiEnvCausalDistribution
         for more details.
-    set_adjacency(adjacency_matrix, adjacency_misspecified) -> np.ndarray
-        Sets the adjacency matrix and possibly changes it if it is misspecified.
     """
+
+    encoder: ClusteredCausalEncoder  # set in subclasses
 
     def __init__(
         self,
@@ -97,7 +102,6 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         self.weight_decay = weight_decay
         self.lr_scheduler = lr_scheduler
         self.lr_min = lr_min
-        self.encoder = None  # needs to be set in subclasses
 
         self.save_hyperparameters()
 
@@ -106,14 +110,74 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         return np.sum(self.cluster_sizes) if self.cluster_sizes is not None else self.graph.shape[0]
 
     def training_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> Tensor:
+        """Apply training step over batch of data.
+
+        Parameters
+        ----------
+        batch : tuple[Tensor, ...]
+            A batch of data containing the following tensors:
+            - x: Tensor of shape (n_samples, n_vars)
+                The observed data.
+            - v: Tensor of shape (n_samples, n_outputs)
+                The ground-truth latent variables.
+            - u: Tensor of shape (n_samples, n_outputs)
+                The ground-truth interventions.
+            - e: Tensor of shape (n_samples, n_envs)
+                The environment indicators.
+            - int_target: Tensor of shape (n_samples, n_outputs)
+                The intervention targets.
+            - log_prob_gt: Tensor of shape (n_samples,)
+                The ground-truth log probabilities.
+        batch_idx : int
+            Index of the batch.
+
+        Returns
+        -------
+        loss : Tensor
+            The average loss over the batch, which is the negative log likelihood.
+        """
         x, v, u, e, int_target, log_prob_gt = batch
         log_prob, res = self.encoder.multi_env_log_prob(x, e, int_target)
         loss = -log_prob.mean()
 
-        self.log("train_loss", loss, prog_bar=False)
+        self.log(f"train_loss (batch={batch_idx})", loss, prog_bar=False)
         return loss
 
     def validation_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> dict[str, Tensor]:
+        """Validation step.
+
+        Parameters
+        ----------
+        batch : tuple[Tensor, ...]
+            A batch of data containing the following tensors:
+            - x: Tensor of shape (n_samples, n_vars)
+                The observed data.
+            - v: Tensor of shape (n_samples, n_outputs)
+                The ground-truth latent variables.
+            - u: Tensor of shape (n_samples, n_outputs)
+                The ground-truth interventions.
+            - e: Tensor of shape (n_samples, n_envs)
+                The environment indicators.
+            - int_target: Tensor of shape (n_samples, n_outputs)
+                The intervention targets.
+            - log_prob_gt: Tensor of shape (n_samples,)
+                The ground-truth log probabilities.
+        batch_idx : int
+            Index of the batch.
+
+        Returns
+        -------
+        dict[str, Tensor]
+            Returns:
+                - log_prob: Tensor of shape (n_samples,)
+                    The log probability of the data given the encoder.
+                - log_prob_gt: Tensor of shape (n_samples,)
+                    The ground-truth log probabilities.
+                - v: Tensor of shape (n_samples, n_outputs)
+                    The ground-truth latent variables.
+                - v_hat: Tensor of shape (n_samples, n_outputs)
+                    The estimated latent variables.
+        """
         x, v, u, e, int_target, log_prob_gt = batch
         log_prob, res = self.encoder.multi_env_log_prob(x, e, int_target)
 
@@ -201,95 +265,95 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         return v_hat
 
     def on_before_optimizer_step(self, optimizer: Optimizer, optimizer_idx: int) -> None:
-        num_envs = len(self.encoder.intervention_targets_per_env)
-        num_vars = self.adjacency_matrix.shape[0]
+        num_envs = len(self.encoder.intervention_targets_per_distr)
+        num_vars = self.graph.shape[0]
 
-        # set gradients to fixed q0 parameters to zero
-        if self.encoder.q0.trainable:
-            try:
-                for param_idx, (env, i) in enumerate(product(range(num_envs), range(num_vars))):
-                    if not self.encoder.q0.noise_means_requires_grad[env][i]:
-                        list(self.encoder.q0.noise_means.parameters())[param_idx].grad = None
-                    if not self.encoder.q0.noise_stds_requires_grad[env][i]:
-                        list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
-            except AttributeError:
-                pass
+        # do not train any parameters that are not supposed to be trained
+        # XXX: in this case, we do not update exogenous variable distributions that are fixed
+        for param_idx, (distr_idx, idx) in enumerate(product(range(num_envs), range(num_vars))):
+            if not self.encoder.q0.noise_means_requires_grad[distr_idx][idx]:
+                list(self.encoder.q0.noise_means.parameters())[param_idx].grad = None
+            if not self.encoder.q0.noise_stds_requires_grad[distr_idx][idx]:
+                list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
 
 
 class NonlinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
-    """
-    CauCA model with nonlinear unmixing function.
+    """Nonlinear Neural Clustered Augmented SCM Flow Model.
 
-    Additional attributes
-    ---------------------
-    k_flows : int
+    Class for nonlinear Neural augmented structural causal models (NASCM-Flow). It implements the
+    training loop and the evaluation metrics.
+
+    The model is an encoder-decoder model where the encoding and decoding uses flows as the
+    layers (i.e. invertible transformations).
+
+    Attributes
+    ----------
+    graph : np.ndarray, shape (num_nodes, num_nodes)
+        Adjacency matrix of the causal graph assumed by the model. This is not necessarily
+        the true adjacency matrix of the data generating process (see below).
+    cluster_sizes : np.ndarray of shape (n_clusters, 1)
+        The size/dimensionality of each cluster.
+    intervention_targets_per_distr : Optional[Tensor], optional
+        The intervention targets per distribution, by default None, corresponding
+        to no interventions and a single distribution. The single distribution is
+        assumed to be observational.
+    hard_interventions_per_distr : Tensor of shape (n_distributions, n_clusters)
+        Whether the intervention target for each cluster-variable is hard (i.e.
+        all parents are removed).
+    fix_mechanisms : bool, optional
+        Whether to fix the mechanisms, by default False.
+    lr : float
+        Learning rate for the optimizer.
+    weight_decay : float
+        Weight decay for the optimizer.
+    lr_scheduler : str
+        Learning rate scheduler to use. If None, no scheduler is used. Options are
+        "cosine" or None. Default: None.
+    lr_min : float
+        Minimum learning rate for the scheduler. Default: 0.0.
+    n_flows : int
         Number of flows to use in the nonlinear unmixing function. Default: 1.
-    net_hidden_dim : int
+    n_hidden_dim : int
         Hidden dimension of the neural network used in the nonlinear unmixing function. Default: 128.
-    net_hidden_layers : int
+    n_layers : int
         Number of hidden layers of the neural network used in the nonlinear unmixing function. Default: 3.
-    fix_mechanisms : bool
-        Some mechanisms can be fixed to a simple gaussian distribution without loss of generality.
-        This has only an effect for the parametric base distribution. If True, these mechanisms are fixed.
-        Default: True.
-    fix_all_intervention_targets : bool
-        When fixable mechanisms are fixed, this parameter determines whether all intervention targets
-        are fixed (option 1) or all intervention targets which are non-root nodes together with all
-        non-intervened root nodes (option 2). See documentation of ParamMultiEnvCausalDistribution
-        for more details. Default: False.
-    nonparametric_base_distr : bool
-        Whether to use a nonparametric base distribution for the flows. If false, a parametric linear
-        gaussian causal base distribution is used. Default: False.
-    K_cbn : int
-        Number of flows to use in the nonlinear nonparametric base distribution. Default: 3.
-    net_hidden_dim_cbn : int
-        Hidden dimension of the neural network used in the nonlinear nonparametric base distribution. Default: 128.
-    net_hidden_layers_cbn : int
-        Number of hidden layers of the neural network used in the nonlinear nonparametric base distribution. Default: 3.
+    encoder : NonparametricClusteredCausalEncoder
+        The causal encoder. The inverse of the encoder is the
+        unmixing function.
     """
 
     def __init__(
         self,
-        latent_dim: int,
-        adjacency_matrix: np.ndarray,
-        intervention_targets_per_env: Tensor,
+        graph: np.ndarray,
+        cluster_sizes: List[int] = None,
+        intervention_targets_per_distr: Optional[torch.Tensor] = None,
+        hard_interventions_per_distr: Optional[Tensor] = None,
+        fix_mechanisms: bool = False,
         lr: float = 1e-2,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
-        adjacency_misspecified: bool = False,
-        k_flows: int = 1,
-        net_hidden_dim: int = 128,
-        net_hidden_layers: int = 3,
-        fix_mechanisms: bool = True,
-        fix_all_intervention_targets: bool = False,
-        nonparametric_base_distr: bool = False,
-        K_cbn: int = 3,
-        net_hidden_dim_cbn: int = 128,
-        net_hidden_layers_cbn: int = 3,
+        n_flows: int = 1,
+        n_hidden_dim: int = 128,
+        n_layers: int = 3,
     ) -> None:
         super().__init__(
-            latent_dim=latent_dim,
-            adjacency_matrix=adjacency_matrix,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
             lr=lr,
             weight_decay=weight_decay,
             lr_scheduler=lr_scheduler,
             lr_min=lr_min,
-            adjacency_misspecified=adjacency_misspecified,
         )
-        self.encoder = NonlinearCauCAEncoder(
-            latent_dim,
-            self.adjacency_matrix,  # this is the misspecified adjacency matrix if adjacency_misspecified=True
-            K=k_flows,
-            intervention_targets_per_env=intervention_targets_per_env,
-            net_hidden_dim=net_hidden_dim,
-            net_hidden_layers=net_hidden_layers,
+        self.encoder = NonparametricClusteredCausalEncoder(
+            self.graph,
+            cluster_sizes=self.cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
             fix_mechanisms=fix_mechanisms,
-            fix_all_intervention_targets=fix_all_intervention_targets,
-            nonparametric_base_distr=nonparametric_base_distr,
-            K_cbn=K_cbn,
-            net_hidden_dim_cbn=net_hidden_dim_cbn,
-            net_hidden_layers_cbn=net_hidden_layers_cbn,
+            n_flows=n_flows,
+            n_hidden_dim=n_hidden_dim,
+            n_layers=n_layers,
         )
         self.save_hyperparameters()
 
@@ -301,32 +365,30 @@ class LinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
 
     def __init__(
         self,
-        latent_dim: int,
-        adjacency_matrix: np.ndarray,
-        intervention_targets_per_env: Tensor,
+        graph: np.ndarray,
+        cluster_sizes: List[int] = None,
+        intervention_targets_per_distr: Tensor = None,
+        hard_interventions_per_distr: Tensor = None,
+        fix_mechanisms: bool = True,
         lr: float = 1e-2,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
-        adjacency_misspecified: bool = False,
-        fix_mechanisms: bool = True,
-        nonparametric_base_distr: bool = False,
     ) -> None:
         super().__init__(
-            latent_dim=latent_dim,
-            adjacency_matrix=adjacency_matrix,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
             lr=lr,
             weight_decay=weight_decay,
             lr_scheduler=lr_scheduler,
             lr_min=lr_min,
-            adjacency_misspecified=adjacency_misspecified,
         )
-        self.encoder = LinearCauCAEncoder(
-            latent_dim,
-            self.adjacency_matrix,  # this is the misspecified adjacency matrix if adjacency_misspecified=True
-            intervention_targets_per_env=intervention_targets_per_env,
+        self.encoder = ParametricClusteredCausalEncoder(
+            self.graph,
+            cluster_sizes=cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
             fix_mechanisms=fix_mechanisms,
-            nonparametric_base_distr=nonparametric_base_distr,
         )
         self.save_hyperparameters()
 
@@ -338,33 +400,36 @@ class NaiveNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
 
     def __init__(
         self,
-        latent_dim: int,
-        adjacency_matrix: np.ndarray,
+        graph: np.ndarray,
+        cluster_sizes: List[int] = None,
         lr: float = 1e-2,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
-        adjacency_misspecified: bool = False,
-        k_flows: int = 1,
-        intervention_targets_per_env: Optional[torch.Tensor] = None,
-        net_hidden_dim: int = 128,
-        net_hidden_layers: int = 3,
+        intervention_targets_per_distr: Optional[torch.Tensor] = None,
+        hard_interventions_per_distr: Optional[Tensor] = None,
+        fix_mechanisms: bool = False,
+        n_flows: int = 1,
+        n_hidden_dim: int = 128,
+        n_layers: int = 3,
     ) -> None:
         super().__init__(
-            latent_dim=latent_dim,
-            adjacency_matrix=adjacency_matrix,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
             lr=lr,
             weight_decay=weight_decay,
             lr_scheduler=lr_scheduler,
             lr_min=lr_min,
-            adjacency_misspecified=adjacency_misspecified,
         )
-        self.encoder = NaiveEncoder(
-            latent_dim,
-            self.adjacency_matrix,  # this is the misspecified adjacency matrix if adjacency_misspecified=True
-            K=k_flows,
-            intervention_targets_per_env=intervention_targets_per_env,
-            net_hidden_dim=net_hidden_dim,
-            net_hidden_layers=net_hidden_layers,
+
+        self.encoder = NaiveClusteredCausalEncoder(
+            self.graph,
+            self.cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
+            fix_mechanisms=fix_mechanisms,
+            n_flows=n_flows,
+            n_hidden_dim=n_hidden_dim,
+            n_layers=n_layers,
         )
         self.save_hyperparameters()

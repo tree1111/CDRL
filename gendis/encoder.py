@@ -12,7 +12,7 @@ from .normalizing_flow.distribution import (
     ClusteredCausalDistribution,
     NonparametricClusteredCausalDistribution,
 )
-from .utils import make_spline_flows
+from .normalizing_flow.utils import make_spline_flows
 
 
 class ClusteredCausalEncoder(nf.NormalizingFlow):
@@ -84,7 +84,7 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
     ) -> None:
         self.graph = graph
         self.cluster_sizes = cluster_sizes
-        self.intervention_targets_per_env = intervention_targets_per_distr
+        self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.fix_mechanisms = fix_mechanisms
 
@@ -98,7 +98,9 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
             else np.sum(self.cluster_sizes)
         )
 
-    def multi_distr_log_prob(self, x: Tensor, i: Tensor, intervention_targets: Tensor) -> Tensor:
+    def multi_env_log_prob(
+        self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor
+    ) -> Tensor:
         raise NotImplementedError
 
     def forward(self, x: Tensor) -> Tensor:
@@ -120,11 +122,11 @@ class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
         if q0 is None:
             assert (
                 intervention_targets_per_distr is not None
-            ), "intervention_targets_per_env must be provided for parametric base distribution"
+            ), "intervention_targets_per_distr must be provided for parametric base distribution"
             q0 = ClusteredCausalDistribution(
                 adjacency_matrix=graph,
                 cluster_sizes=cluster_sizes,
-                intervention_targets_per_env=intervention_targets_per_distr,
+                intervention_targets_per_distr=intervention_targets_per_distr,
                 hard_interventions_per_distr=hard_interventions_per_distr,
                 fix_mechanisms=fix_mechanisms,
             )
@@ -207,7 +209,7 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
             q0 = NonparametricClusteredCausalDistribution(
                 adjacency_matrix=graph,
                 cluster_sizes=cluster_sizes,
-                intervention_targets_per_env=intervention_targets_per_distr,
+                intervention_targets_per_distr=intervention_targets_per_distr,
                 hard_interventions_per_distr=hard_interventions_per_distr,
                 fix_mechanisms=fix_mechanisms,
                 n_flows=n_flows,
@@ -289,12 +291,12 @@ class NaiveClusteredCausalEncoder(ClusteredCausalEncoder):
         self,
         graph: np.ndarray,
         cluster_sizes: Tensor | None = None,
-        intervention_targets_per_env: Optional[Tensor] = None,
+        intervention_targets_per_distr: Optional[Tensor] = None,
         hard_interventions_per_distr: Tensor | None = None,
         fix_mechanisms: bool = False,
         n_flows: List = 3,
-        net_hidden_dim: int = 128,
-        net_hidden_layers: int = 3,
+        n_hidden_dim: int = 128,
+        n_layers: int = 3,
     ) -> None:
         # q0
         q0 = NaiveMultiEnvCausalDistribution(
@@ -304,12 +306,12 @@ class NaiveClusteredCausalEncoder(ClusteredCausalEncoder):
         super().__init__(
             graph=graph,
             cluster_sizes=cluster_sizes,
-            intervention_targets_per_env=intervention_targets_per_env,
+            intervention_targets_per_distr=intervention_targets_per_distr,
             hard_interventions_per_distr=hard_interventions_per_distr,
             fix_mechanisms=fix_mechanisms,
             n_flows=n_flows,
-            net_hidden_dim=net_hidden_dim,
-            net_hidden_layers=net_hidden_layers,
+            n_hidden_dim=n_hidden_dim,
+            n_layers=n_layers,
             q0=q0,
         )
 
