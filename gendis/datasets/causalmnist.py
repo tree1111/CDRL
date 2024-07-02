@@ -1,3 +1,4 @@
+import collections
 from pathlib import Path
 import numpy as np
 import torch
@@ -7,11 +8,12 @@ from joblib import delayed, Parallel
 from .morphomnist import morpho, perturb
 
 from torchvision.datasets.mnist import MNIST
+from torchvision.transforms.functional import pil_to_tensor
 import matplotlib.pyplot as plt
 
 
-def latent_scm_single_digit_params(graph, label, n_samples):
-    """_summary_
+def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=None):
+    """Latent SCM for a single digit.
 
     Parameters
     ----------
@@ -24,21 +26,72 @@ def latent_scm_single_digit_params(graph, label, n_samples):
 
     Returns
     -------
-    _type_
-        _description_
+    meta_labels : dict of lists of length (n_samples,)
+        Contains the meta-labels for the dataset.
+        - width: the width of the digit
+        - color: the color of the digit on the viridis colormap.
+        - fracture_thickness: the thickness of the fracture
+        - fracture_num_fractures: the number of fractures
     """
     meta_labels = dict()
 
     if graph == "chain":
         # the width of the digit is correlated with the color
         # which is correlated with the presence of a fracture
-        #
-        width = torch.rand(size=(n_samples, 1)) * 2
+        if intervention_idx == 1:
+            width_intervention = stats.skewnorm.rvs(
+                a=0, loc=2, size=(n_samples, 1), dtype=torch.float32
+            )
+            width_intervention = width_intervention - min(
+                width_intervention
+            )  # Shift the set so the minimum value is equal to zero.
+        else:
+            width_intervention = 1.0
+
+        if intervention_idx == 2:
+            color_intervention = -4.0
+        else:
+            color_intervention = 1.0
+
+        if intervention_idx == 3:
+            color_intervention = 0.01
+        else:
+            color_intervention = 1.0
+        width = (torch.rand(size=(n_samples, 1), dtype=torch.float32) * 2) * width_intervention
+
+        # different colors correlate with the fracture
+        # - thickness of the fracture will be more
+        # - number of fractures for darker colors
+        thickness = stats.skewnorm.rvs(a=2 * width, loc=1, size=(n_samples, 1), dtype=torch.float32)
+        thickness = ((thickness - min(thickness)) / max(thickness) + 1) * 5
+        thickness = torch.Tensor(thickness)
+        num_fractures = torch.bernoulli(width / max(width), dtype=torch.float32) + torch.bernoulli(
+            width / max(width), dtype=torch.float32
+        )
+
+        # the thicker the fracture(s), the higher up color it is
+        # on the spectrum
+        color_value = stats.skewnorm.rvs(
+            a=-thickness * num_fractures / 2.0 * color_intervention, loc=1, size=(n_samples, 1)
+        )
+        color_value = color_value - min(color_value)
+        color_value = color_value / max(color_value)
+        color_value = torch.Tensor(color_value)
+        print("Color value: ", color_value.shape)
+
+        meta_labels["width"] = width.to(torch.float32)
+        meta_labels["color"] = color_value.to(torch.float32)
+        meta_labels["fracture_thickness"] = thickness.to(torch.float32)
+        meta_labels["fracture_num_fractures"] = num_fractures.to(torch.float32)
+    elif graph == "collider":
+        # the width of the digit is causes both the color
+        # and the presence of a fracture
+        width = torch.rand(size=(n_samples, 1), dtype=torch.float32) * 2
 
         # the thicker the digit, the higher up color it is
         # on the spectrum
-        color_value = stats.skewnorm.rvs(a=-width,loc=1, size=(n_samples,1))
-        color_value = (color_value - min(color_value))
+        color_value = stats.skewnorm.rvs(a=-width, loc=1, size=(n_samples, 1))
+        color_value = color_value - min(color_value)
         color_value = color_value / max(color_value)
         color_value = torch.Tensor(color_value)
         print("Color value: ", color_value.shape)
@@ -46,38 +99,28 @@ def latent_scm_single_digit_params(graph, label, n_samples):
         # different colors correlate with the fracture
         # - thickness of the fracture will be more
         # - number of fractures for darker colors
-        thickness = stats.skewnorm.rvs(a=2*color_value,loc=1, size=(n_samples,1))
-        thickness = ((thickness - min(thickness)) / max(thickness) + 1) * 5
-        thickness = torch.Tensor(thickness)
-        num_fractures = torch.bernoulli(color_value) + torch.bernoulli(color_value)
-        fracture_params = (thickness, num_fractures)
-
-        meta_labels["width"] = width
-        meta_labels["color"] = color_value
-        meta_labels["fracture_thickness"] = thickness
-        meta_labels["fracture_num_fractures"] = num_fractures
-    elif graph == "collider":
-        # the width of the digit is causes both the color
-        # and the presence of a fracture
-        width = torch.rand(size=(n_samples, 1)) * 2
-
-        # the thicker the digit, the higher up color it is
-        # on the spectrum
-        color_value = torch.rand(width)
-
         # different colors correlate with the fracture
         # - thickness of the fracture will be more
         # - number of fractures for darker colors
-        thickness = torch.rand()
+        thickness = stats.skewnorm.rvs(a=2 * width, loc=1, size=(n_samples, 1))
+        thickness = ((thickness - min(thickness)) / max(thickness) + 1) * 5
+        thickness = torch.Tensor(thickness)
         num_fractures = torch.bernoulli(width) + torch.bernoulli(width)
-        fracture_params = (thickness, num_fractures)
 
-        meta_labels["width"] = width
-        meta_labels["color"] = color_value
-        meta_labels["fracture_thickness"] = thickness
-        meta_labels["fracture_num_fractures"] = num_fractures
+        meta_labels["width"] = width.to(torch.float32)
+        meta_labels["color"] = color_value.to(torch.float32)
+        meta_labels["fracture_thickness"] = thickness.to(torch.float32)
+        meta_labels["fracture_num_fractures"] = num_fractures.to(torch.float32)
 
     meta_labels["label"] = [label] * n_samples
+    # add intervention targets
+    if intervention_idx is None:
+        meta_labels["intervention_targets"] = [[0, 0, 0]] * n_samples
+    elif intervention_idx == 1:
+        # intervene and change the distribution of the width
+        meta_labels["intervention_targets"] = [[1, 0, 0]] * n_samples
+    elif intervention_idx in [2, 3]:
+        meta_labels["intervention_targets"] = [[0, 0, 1]] * n_samples
     return meta_labels
 
 
@@ -101,7 +144,8 @@ def apply_perturbation(image, perturbation, convert_dtype=True):
     else:
         return perturbed_image * 255
 
-def _prepare_image(dataset, meta_labels, idx, cmap, label):
+
+def _prepare_image(raw_imgs, meta_labels, idx, cmap, label):
     # apply changes to the image
     width, color, fracture_thickness, num_fractures = (
         meta_labels["width"][idx],
@@ -117,7 +161,7 @@ def _prepare_image(dataset, meta_labels, idx, cmap, label):
         width_func = perturb.Thickening(amount=width)
     fracture = perturb.Fracture(thickness=fracture_thickness, num_frac=int(num_fractures))
 
-    img = dataset.data[idx]
+    img = raw_imgs[idx]
     img = img.squeeze()
     for perturb_func in [fracture, width_func]:
         img = torch.Tensor(np.array(img))
@@ -142,6 +186,7 @@ def _prepare_image(dataset, meta_labels, idx, cmap, label):
     meta_label["fracture_thickness"] = meta_labels["fracture_thickness"][idx]
     meta_label["fracture_num_fractures"] = meta_labels["fracture_num_fractures"][idx]
     meta_label["label"] = label
+    meta_label["intervention_targets"] = meta_labels["intervention_targets"][idx]
     return (img, meta_label)
 
 
@@ -151,12 +196,13 @@ class CausalMNIST(MNIST):
         self,
         root,
         graph_type,
-        label="0",
+        label=0,
         train=True,
         transform=None,
         target_transform=None,
         download=False,
         n_jobs=None,
+        intervention_idx=None,
     ):
         super(CausalMNIST, self).__init__(
             root,
@@ -166,13 +212,37 @@ class CausalMNIST(MNIST):
             download=download,
         )
 
+        self.intervention_idx = intervention_idx
         self.label = label
         self.n_jobs = n_jobs
         self.graph_type = graph_type
 
-    def prepare_dataset(self):
+    def prepare_dataset(self, overwrite=False):
         dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
-        if dataset_path.exists():
+        intervention_idx = self.intervention_idx if self.intervention_idx is not None else 0
+        if self.train:
+            dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-train.pt"
+        else:
+            dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-test.pt"
+        if dataset_fpath.exists() and not overwrite:
+            print(f'Loading dataset from "{dataset_fpath}"')
+
+            dataset = torch.load(dataset_fpath)
+            n_samples = len(dataset)
+            print(dataset[0][1].keys())
+
+            imgs = torch.zeros((n_samples, 3, 28, 28))
+            meta_labels = collections.defaultdict(list)
+            for idx, (img, meta_label) in enumerate(dataset):
+                if idx == 0:
+                    print(pil_to_tensor(img).shape, meta_label)
+                imgs[idx, ...] = pil_to_tensor(img)
+                for key in meta_label.keys():
+                    meta_labels[key].append(meta_label[key])
+            self.data = imgs
+            self.meta_labels = meta_labels
+            self.intervention_targets = self.meta_labels.get("intervention_targets")[0]
+            self.meta_labels = meta_labels
             return
 
         if self.train:
@@ -180,21 +250,38 @@ class CausalMNIST(MNIST):
         else:
             mnist_data = MNIST(self.root, train=False, download=True)
 
-        n_samples = len(mnist_data)
+        raw_imgs = get_mnist_digit(mnist_data.data, mnist_data.targets, self.label)
+        n_samples = len(raw_imgs)
+
+        print("Generating dataset: for label", self.label, "with", n_samples, "samples")
+
         meta_labels = latent_scm_single_digit_params(
             self.graph_type,
             self.label,
             n_samples=n_samples,
+            intervention_idx=self.intervention_idx,
         )
         cmap = plt.cm.viridis  # Use a continuous colormap like viridis and extract RGB values
 
         # now actually generate the data per image
         dataset = Parallel(n_jobs=self.n_jobs)(
-            delayed(_prepare_image)(mnist_data, meta_labels, idx, cmap, self.label) for idx in range(n_samples)
+            delayed(_prepare_image)(raw_imgs, meta_labels, idx, cmap, self.label)
+            for idx in range(n_samples)
         )
+        imgs = torch.zeros((n_samples, 3, 28, 28))
+        meta_labels = collections.defaultdict(list)
+        for idx, (img, meta_label) in enumerate(dataset):
+            if idx == 0:
+                print(pil_to_tensor(img).shape, meta_label)
+            imgs[idx, ...] = pil_to_tensor(img)
+            for key in meta_label.keys():
+                meta_labels[key].append(meta_label[key])
 
         dataset_path.mkdir(exist_ok=True, parents=True)
-        torch.save(dataset, dataset_path / f"{self.graph_type}.pt")
+        torch.save(dataset, dataset_fpath)
+        self.data = imgs
+        self.meta_labels = meta_labels
+        self.intervention_targets = self.meta_labels.get("intervention_targets")[0]
 
     def __getitem__(self, index):
         """Get a sample from the image dataset.
@@ -206,11 +293,13 @@ class CausalMNIST(MNIST):
         - fracture_num_fractures
         - label
         """
-        img, target = super(CausalMNIST, self).__getitem__(index)
+        img, meta_label = self.data[index]
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        # img = Image.fromarray(img.numpy(), mode="L")
 
         if self.transform is not None:
             img = self.transform(img)
 
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-        return img, target
+        return img, meta_label

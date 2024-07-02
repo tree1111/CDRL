@@ -260,6 +260,7 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
         log_q = torch.zeros(len(x), dtype=x.dtype, device=x.device)
 
         # encode X to V_hat and compute the log determinant terms along the way
+        # using normalizing flows
         v_latent = x
         for i in range(len(self.flows) - 1, -1, -1):
             v_latent, log_det = self.flows[i].inverse(v_latent)
@@ -267,6 +268,7 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
         determinant_terms = log_q
 
         # compute the log probability of the final V_hat
+        # using the base distribution, which adheres to a latent causal graph
         prob_terms = self.q0.multi_env_log_prob(v_latent, e, intervention_targets)
         log_q += prob_terms
         res = {

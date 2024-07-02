@@ -136,8 +136,17 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         loss : Tensor
             The average loss over the batch, which is the negative log likelihood.
         """
-        x, v, u, e, int_target, log_prob_gt = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, e, int_target)
+        (
+            x,
+            width,
+            color,
+            fracture_thickness,
+            fracture_num_fractures,
+            label,
+            distr_indicators,
+            intervention_targets,
+        ) = batch
+        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
         loss = -log_prob.mean()
 
         self.log(f"train_loss (batch={batch_idx})", loss, prog_bar=False)

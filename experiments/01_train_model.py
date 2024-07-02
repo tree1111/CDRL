@@ -1,3 +1,4 @@
+from pathlib import Path
 import argparse
 from copy import deepcopy
 import logging
@@ -10,11 +11,19 @@ from sklearn.model_selection import train_test_split
 import joblib
 import inspect
 import os.path
-import imodelsx.cache_save_utils
+import pytorch_lightning as pl
+import torch
 
-path_to_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-import project_name.model
-import project_name.data
+from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
+from gendis.model import NonlinearNeuralClusteredASCMFlow, LinearNeuralClusteredASCMFlow
+
+
+def generate_list(x, n_clusters):
+    quotient = x // n_clusters
+    remainder = x % n_clusters
+    result = [quotient] * (n_clusters - 1)
+    result.append(quotient + remainder)
+    return result
 
 
 def fit_model(model, X_train, y_train, feature_names, r):
@@ -98,67 +107,137 @@ if __name__ == "__main__":
     parser = add_computational_args(deepcopy(parser_without_computational_args))
     args = parser.parse_args()
 
+    graph_type = "chain"
+    adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
+    latent_dim = len(adjacency_matrix)
+    results_dir = Path("./results/")
+    results_dir.mkdir(exist_ok=True, parents=True)
+
+    root = "/Users/adam2392/pytorch_data/"
+    seed = args.seed
+    max_epochs = args.max_epochs
+    accelerator = args.accelerator
+    batch_size = args.batch_size
+    log_dir = args.log_dir
+
+    devices = 1
+    n_jobs = 1
+    print("Running with n_jobs:", n_jobs)
+
+    # output filename for the results
+    fname = results_dir / f"{graph_type}-seed={seed}-results.npz"
+
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
-
-    # set up saving directory + check for cache
-    already_cached, save_dir_unique = imodelsx.cache_save_utils.get_save_dir_unique(
-        parser, parser_without_computational_args, args, args.save_dir
-    )
-
-    if args.use_cache and already_cached:
-        logging.info("cached version exists! Successfully skipping :)\n\n\n")
-        exit(0)
-    for k in sorted(vars(args)):
-        logger.info("\t" + k + " " + str(vars(args)[k]))
-    logging.info("\n\n\tsaving to " + save_dir_unique + "\n")
+    logging.info("\n\n\tsaving to " + fname + "\n")
 
     # set seed
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    # torch.manual_seed(args.seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    pl.seed_everything(seed, workers=True)
 
-    # load text data
-    dset, dataset_key_text = project_name.data.load_huggingface_dataset(
-        dataset_name=args.dataset_name, subsample_frac=args.subsample_frac
+    # load dataset
+    datasets = []
+    intervention_targets_per_distr = []
+    hard_interventions_per_distr = None
+    for intervention_idx in [None, 1, 2, 3]:
+        dataset = CausalMNIST(
+            root=root,
+            graph_type=graph_type,
+            label=0,
+            download=True,
+            train=True,
+            n_jobs=None,
+            intervention_idx=intervention_idx,
+        )
+        dataset.prepare_dataset(overwrite=False)
+        datasets.append(dataset)
+
+        intervention_targets_per_distr.append(dataset.intervention_targets)
+
+    # now we can wrap this in a pytorch lightning datamodule
+    data_module = ClusteredMultiDistrDataModule(
+        batch_size=batch_size,
+        num_workers=n_jobs,
+        intervention_targets_per_distr=intervention_targets_per_distr,
+        log_dir=log_dir,
     )
-    (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        feature_names,
-    ) = project_name.data.convert_text_data_to_counts_array(dset, dataset_key_text)
+    data_module.setup()
 
-    # load tabular data
-    # https://csinva.io/imodels/util/data_util.html#imodels.util.data_util.get_clean_dataset
-    # X_train, X_test, y_train, y_test, feature_names = imodels.get_clean_dataset('compas_two_year_clean', data_source='imodels', test_size=0.33)
+    n_flows = 3  # number of flows to use in nonlinear ICA model
+    lr_scheduler = None
+    lr_min = 0.0
+    lr = 1e-6
 
-    X_train, X_cv, y_train, y_cv = train_test_split(
-        X_train, y_train, test_size=0.33, random_state=args.seed
+    # Define the model
+    net_hidden_dim = 128
+    net_hidden_dim_cbn = 128
+    net_hidden_layers = 3
+    net_hidden_layers_cbn = 3
+    fix_mechanisms = False
+    model = NonlinearNeuralClusteredASCMFlow(
+        cluster_sizes=generate_list(728, 3),
+        graph=adjacency_matrix,
+        intervention_targets_per_distr=intervention_targets_per_distr,
+        hard_interventions_per_distr=hard_interventions_per_distr,
+        n_flows=n_flows,
+        n_hidden_dim=net_hidden_dim,
+        n_layers=net_hidden_layers,
+        lr=lr,
+        lr_scheduler=lr_scheduler,
+        lr_min=lr_min,
+        fix_mechanisms=fix_mechanisms,
+    )
+    checkpoint_root_dir = f"{graph_type}-seed={seed}"
+    checkpoint_dir = Path(checkpoint_root_dir) / "default"
+    logger = None
+    wandb = False
+    check_val_every_n_epoch = 1
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=checkpoint_dir,
+        save_top_k=3,
+        monitor="train_loss",
+        every_n_epochs=check_val_every_n_epoch,
     )
 
-    # load model
-    model = project_name.model.get_model(args)
-
-    # set up saving dictionary + save params file
-    r = defaultdict(list)
-    r.update(vars(args))
-    r["save_dir_unique"] = save_dir_unique
-    imodelsx.cache_save_utils.save_json(
-        args=args, save_dir=save_dir_unique, fname="params.json", r=r
+    # Train the model
+    trainer = pl.Trainer(
+        max_epochs=max_epochs,
+        logger=logger,
+        devices=devices,
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=check_val_every_n_epoch,
+        accelerator=accelerator,
+    )
+    trainer.fit(
+        model,
+        datamodule=data_module,
     )
 
-    # fit
-    r, model = fit_model(model, X_train, y_train, feature_names, r)
+    print(f"Checkpoint dir: {checkpoint_dir}")
+    trainer.test(datamodule=data_module)
 
-    # evaluate
-    r = evaluate_model(model, X_train, X_cv, X_test, y_train, y_cv, y_test, r)
+    # save the output
+    x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
+    print(x.shape)
+    print(e.shape)
 
-    # save results
-    joblib.dump(
-        r, join(save_dir_unique, "results.pkl")
-    )  # caching requires that this is called results.pkl
-    joblib.dump(model, join(save_dir_unique, "model.pkl"))
-    logging.info("Succesfully completed :)\n\n")
+    # Step 1: Obtain learned representations, which are "predictions
+    vhat = model.forward(x)
+    corr_arr_v_vhat = np.zeros((latent_dim, latent_dim))
+    for idx in range(latent_dim):
+        for jdx in range(latent_dim):
+            corr_arr_v_vhat[jdx, idx] = mean_correlation_coefficient(vhat[:, (idx,)], v[:, (jdx,)])
+    print("Saving file to: ", fname)
+    np.savez_compressed(
+        fname,
+        x=x.detach().numpy(),
+        v=v.detach().numpy(),
+        u=u.detach().numpy(),
+        e=e.detach().numpy(),
+        int_target=int_target.detach().numpy(),
+        log_prob_gt=log_prob_gt.detach().numpy(),
+        vhat=vhat.detach().numpy(),
+        corr_arr_v_vhat=corr_arr_v_vhat,
+    )
