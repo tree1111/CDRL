@@ -1,12 +1,9 @@
 from pathlib import Path
 import argparse
-from copy import deepcopy
 import logging
 import random
-from os.path import join
 import numpy as np
-from sklearn.metrics import accuracy_score
-import inspect
+import torch
 import pytorch_lightning as pl
 
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
@@ -21,32 +18,6 @@ def generate_list(x, n_clusters):
     return result
 
 
-def fit_model(model, X_train, y_train, feature_names, r):
-    # fit the model
-    fit_parameters = inspect.signature(model.fit).parameters.keys()
-    if "feature_names" in fit_parameters and feature_names is not None:
-        model.fit(X_train, y_train, feature_names=feature_names)
-    else:
-        model.fit(X_train, y_train)
-
-    return r, model
-
-
-def evaluate_model(model, X_train, X_cv, X_test, y_train, y_cv, y_test, r):
-    """Evaluate model performance on each split"""
-    metrics = {
-        "accuracy": accuracy_score,
-    }
-    for split_name, (X_, y_) in zip(
-        ["train", "cv", "test"], [(X_train, y_train), (X_cv, y_cv), (X_test, y_test)]
-    ):
-        y_pred_ = model.predict(X_)
-        for metric_name, metric_fn in metrics.items():
-            r[f"{metric_name}_{split_name}"] = metric_fn(y_, y_pred_)
-
-    return r
-
-
 # initialize args
 def add_main_args(parser):
     """Caching uses the non-default values from argparse to name the saving directory.
@@ -54,52 +25,40 @@ def add_main_args(parser):
     """
 
     # dataset args
-    parser.add_argument(
-        "--dataset_name", type=str, default="rotten_tomatoes", help="name of dataset"
-    )
-    parser.add_argument(
-        "--subsample_frac", type=float, default=1, help="fraction of samples to use"
-    )
+    # parser.add_argument(
+    #     "--dataset_name", type=str, default="rotten_tomatoes", help="name of dataset"
+    # )
+    # parser.add_argument(
+    #     "--subsample_frac", type=float, default=1, help="fraction of samples to use"
+    # )
 
     # training misc args
-    parser.add_argument("--seed", type=int, default=1, help="random seed")
+    parser.add_argument("--root_dir", type=str, default="./", help="Root directory")
+    parser.add_argument("--seed", type=int, default=1234, help="random seed")
+    parser.add_argument("--max_epochs", type=int, default=200, help="Max epochs")
     parser.add_argument(
-        "--save_dir",
-        type=str,
-        default=join(path_to_repo, "results"),
-        help="directory for saving",
+        "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
+    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
+    parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
 
     # model args
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        choices=["decision_tree", "ridge"],
-        default="decision_tree",
-        help="name of model",
-    )
-    parser.add_argument("--alpha", type=float, default=1, help="regularization strength")
-    parser.add_argument("--max_depth", type=int, default=2, help="max depth of tree")
-    return parser
-
-
-def add_computational_args(parser):
-    """Arguments that only affect computation and not the results (shouldnt use when checking cache)"""
-    parser.add_argument(
-        "--use_cache",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help="whether to check for cache",
-    )
+    # parser.add_argument(
+    #     "--model_name",
+    #     type=str,
+    #     choices=["decision_tree", "ridge"],
+    #     default="decision_tree",
+    #     help="name of model",
+    # )
+    # parser.add_argument("--alpha", type=float, default=1, help="regularization strength")
+    # parser.add_argument("--max_depth", type=int, default=2, help="max depth of tree")
     return parser
 
 
 if __name__ == "__main__":
     # get args
     parser = argparse.ArgumentParser()
-    parser_without_computational_args = add_main_args(parser)
-    parser = add_computational_args(deepcopy(parser_without_computational_args))
+    parser = add_main_args(parser)
     args = parser.parse_args()
 
     graph_type = "chain"
@@ -109,6 +68,8 @@ if __name__ == "__main__":
     results_dir.mkdir(exist_ok=True, parents=True)
 
     root = "/Users/adam2392/pytorch_data/"
+    print(args)
+    # root = args.root_dir
     seed = args.seed
     max_epochs = args.max_epochs
     accelerator = args.accelerator
@@ -117,6 +78,7 @@ if __name__ == "__main__":
 
     devices = 1
     n_jobs = 1
+    num_workers = 2
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
@@ -125,7 +87,7 @@ if __name__ == "__main__":
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
-    logging.info("\n\n\tsaving to " + fname + "\n")
+    logging.info(f"\n\n\tsaving to {fname} \n")
 
     # set seed
     np.random.seed(seed)
@@ -153,10 +115,12 @@ if __name__ == "__main__":
 
     # now we can wrap this in a pytorch lightning datamodule
     data_module = ClusteredMultiDistrDataModule(
+        datasets=datasets,
+        num_workers=num_workers,
         batch_size=batch_size,
-        num_workers=n_jobs,
         intervention_targets_per_distr=intervention_targets_per_distr,
         log_dir=log_dir,
+        flatten=True,
     )
     data_module.setup()
 
@@ -172,7 +136,7 @@ if __name__ == "__main__":
     net_hidden_layers_cbn = 3
     fix_mechanisms = False
     model = NonlinearNeuralClusteredASCMFlow(
-        cluster_sizes=generate_list(728, 3),
+        cluster_sizes=generate_list(784*3, 3),
         graph=adjacency_matrix,
         intervention_targets_per_distr=intervention_targets_per_distr,
         hard_interventions_per_distr=hard_interventions_per_distr,
@@ -185,7 +149,8 @@ if __name__ == "__main__":
         fix_mechanisms=fix_mechanisms,
     )
     checkpoint_root_dir = f"{graph_type}-seed={seed}"
-    checkpoint_dir = Path(checkpoint_root_dir) / "default"
+    checkpoint_dir = Path(checkpoint_root_dir) / f"seed-{seed}_{graph_type}"
+    checkpoint_dir.mkdir(exist_ok=True, parents=True)
     logger = None
     wandb = False
     check_val_every_n_epoch = 1
@@ -210,29 +175,31 @@ if __name__ == "__main__":
         datamodule=data_module,
     )
 
-    print(f"Checkpoint dir: {checkpoint_dir}")
-    trainer.test(datamodule=data_module)
+    # save the final model
+    torch.save(model, checkpoint_dir / "model.pt")
+    # print(f"Checkpoint dir: {checkpoint_dir}")
+    # trainer.test(datamodule=data_module)
 
-    # save the output
-    # x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
-    print(x.shape)
-    print(e.shape)
+    # # save the output
+    # # x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
+    # print(x.shape)
+    # print(e.shape)
 
-    # Step 1: Obtain learned representations, which are "predictions
-    vhat = model.forward(x)
-    corr_arr_v_vhat = np.zeros((latent_dim, latent_dim))
-    for idx in range(latent_dim):
-        for jdx in range(latent_dim):
-            corr_arr_v_vhat[jdx, idx] = mean_correlation_coefficient(vhat[:, (idx,)], v[:, (jdx,)])
-    print("Saving file to: ", fname)
-    np.savez_compressed(
-        fname,
-        x=x.detach().numpy(),
-        v=v.detach().numpy(),
-        u=u.detach().numpy(),
-        e=e.detach().numpy(),
-        int_target=int_target.detach().numpy(),
-        log_prob_gt=log_prob_gt.detach().numpy(),
-        vhat=vhat.detach().numpy(),
-        corr_arr_v_vhat=corr_arr_v_vhat,
-    )
+    # # Step 1: Obtain learned representations, which are "predictions
+    # vhat = model.forward(x)
+    # corr_arr_v_vhat = np.zeros((latent_dim, latent_dim))
+    # for idx in range(latent_dim):
+    #     for jdx in range(latent_dim):
+    #         corr_arr_v_vhat[jdx, idx] = mean_correlation_coefficient(vhat[:, (idx,)], v[:, (jdx,)])
+    # print("Saving file to: ", fname)
+    # np.savez_compressed(
+    #     fname,
+    #     x=x.detach().numpy(),
+    #     v=v.detach().numpy(),
+    #     u=u.detach().numpy(),
+    #     e=e.detach().numpy(),
+    #     int_target=int_target.detach().numpy(),
+    #     log_prob_gt=log_prob_gt.detach().numpy(),
+    #     vhat=vhat.detach().numpy(),
+    #     corr_arr_v_vhat=corr_arr_v_vhat,
+    # )
