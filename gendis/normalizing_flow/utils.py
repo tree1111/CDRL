@@ -46,10 +46,26 @@ def make_spline_flows(
     return flows
 
 
+def sample_invertible_matrix(size, min_val, max_val, max_samples=1000):
+    """Samples a square invertible matrix."""
+    idx = 0
+    while True and idx < max_samples:
+        # Sample a random matrix with uniform entries
+        matrix = (max_val - min_val) * torch.rand((size, size)) + min_val
+        idx += 1
+
+        # Check if the matrix is invertible by computing its determinant
+        if torch.det(matrix) != 0:
+            return matrix
+    raise ValueError(f"Could not find an invertible matrix after {max_samples} samples.")
+
+
 def set_initial_edge_coeffs(
     dag: nx.DiGraph,
     min_val: float = -1,
     max_val: float = 1,
+    cluster_mapping=None,
+    use_matrix: bool = False,
     device: torch.device = None,
 ) -> tuple[list[ParameterList], list[list[bool]]]:
     """Set initial coefficient values for a linear SCM and pass to device.
@@ -62,6 +78,20 @@ def set_initial_edge_coeffs(
         The minimum value for the coefficient. Default is -1.
     max_val : float
         The maximum value for the coefficient. Default is 1.
+    cluster_mapping : dict
+        Mapping of nodes to latent indices. Default is None,
+        which assumes each node has a single latent index, and
+        each edge is therefore a single coefficient. If the
+        latent indices are multivariate, then an invertible matrix
+        is sampled for each "edge", which maps the incoming latent
+        cluster node to the outgoing node.
+        This assumes that each cluster mapping is a list of indices
+        that correspond to the latent dimensions.
+    use_matrix : bool
+        Whether to use a matrix to represent the edge coefficients.
+        Default is False, which corresponds to a vector of coefficients
+        if cluster_mapping is not None. This then applies a element-by-element
+        multiplication of the latent cluster node with the edge coefficient.
     device : torch.device
         PyTorch device. Default is None, and will be inferred.
 
@@ -85,13 +115,35 @@ def set_initial_edge_coeffs(
         coeff_values_requires_grad_i = []
         num_parents = len(list(dag.predecessors(idx)))
         for pa_idx in range(num_parents):
-            random_val = Uniform(min_val, max_val).sample((1,))
-            val = random_val
-            param = nn.Parameter(val * torch.ones(1), requires_grad=True).to(device)
+            if cluster_mapping is None:
+                random_val = Uniform(min_val, max_val).sample((1,))
+                val = random_val
+                param = nn.Parameter(val * torch.ones(1), requires_grad=True).to(device)
+            elif cluster_mapping is not None and use_matrix:
+                if len(cluster_mapping[idx]) != len(cluster_mapping[pa_idx]):
+                    raise ValueError(
+                        "The number of dimensions for the latent clusters must be the same if "
+                        "using a matrix to represent the edge coefficients."
+                        f"{idx}: {len(cluster_mapping[idx])} != {pa_idx}: {len(cluster_mapping[pa_idx])}."
+                    )
+                # sample a random invertible matrix
+                matrix = sample_invertible_matrix(len(cluster_mapping[idx]), min_val, max_val)
+                param = nn.Parameter(matrix, requires_grad=True).to(device)
+            else:
+                # sample a random vector with each value between min_val and max_val
+                vector = (max_val - min_val) * torch.rand((len(cluster_mapping[idx]),)) + min_val
+                param = nn.Parameter(vector, requires_grad=True).to(device)
+
             coeff_values_i.append(param)
             coeff_values_requires_grad_i.append(True)
 
-        const = torch.ones(1, requires_grad=False).to(device)  # variance param
+        if cluster_mapping is None:
+            const = torch.ones(1, requires_grad=False).to(device)  # variance param
+        else:
+            const = nn.Parameter(torch.ones(len(cluster_mapping[idx])), requires_grad=False).to(
+                device
+            )
+
         coeff_values_i.append(const)
         coeff_values_requires_grad_i.append(False)
         coeff_values.append(nn.ParameterList(coeff_values_i))
@@ -106,6 +158,8 @@ def set_initial_noise_parameters(
     environments: Tensor,
     min_val: float,
     max_val: float,
+    cluster_mapping=None,
+    use_matrix: bool = False,
     n_dim_per_node: list[int] = None,
     device: torch.device = None,
 ) -> tuple[list[ParameterList], list[list[bool]]]:
@@ -156,6 +210,9 @@ def set_initial_noise_parameters(
     for idx in range(num_distributions):
         noise_means_e = []
         noise_means_requires_grad_e = []
+
+        # this goes in the order of the nodes in the graph
+        # stored as an adjacency matrix
         for node_idx in range(dag.number_of_nodes()):
             n_dims = n_dim_per_node[node_idx]
             is_shifted = intervention_targets[idx][node_idx] == 1
@@ -171,8 +228,9 @@ def set_initial_noise_parameters(
 
             # initialize the means
             random_val = Uniform(min_val, max_val).sample((n_dims,))
-            val = random_val
-            params = (nn.Parameter(val * torch.ones(1), requires_grad=not is_fixed)).to(device)
+            params = (nn.Parameter(random_val * torch.ones(1), requires_grad=not is_fixed)).to(
+                device
+            )
             noise_means_e.append(params)
             noise_means_requires_grad_e.append(not is_fixed)
         noise_params.append(nn.ParameterList(noise_means_e))

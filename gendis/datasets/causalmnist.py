@@ -39,9 +39,7 @@ def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=Non
         # the width of the digit is correlated with the color
         # which is correlated with the presence of a fracture
         if intervention_idx == 1:
-            width_intervention = stats.skewnorm.rvs(
-                a=0, loc=2, size=(n_samples, 1), dtype=torch.float32
-            )
+            width_intervention = stats.skewnorm.rvs(a=0, loc=2, size=(n_samples, 1))
             width_intervention = width_intervention - min(
                 width_intervention
             )  # Shift the set so the minimum value is equal to zero.
@@ -57,17 +55,15 @@ def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=Non
             color_intervention = 0.01
         else:
             color_intervention = 1.0
-        width = (torch.rand(size=(n_samples, 1), dtype=torch.float32) * 2) * width_intervention
+        width = (torch.rand(size=(n_samples, 1)) * 2) * width_intervention
 
         # different colors correlate with the fracture
         # - thickness of the fracture will be more
         # - number of fractures for darker colors
-        thickness = stats.skewnorm.rvs(a=2 * width, loc=1, size=(n_samples, 1), dtype=torch.float32)
+        thickness = stats.skewnorm.rvs(a=2 * width, loc=1, size=(n_samples, 1))
         thickness = ((thickness - min(thickness)) / max(thickness) + 1) * 5
         thickness = torch.Tensor(thickness)
-        num_fractures = torch.bernoulli(width / max(width), dtype=torch.float32) + torch.bernoulli(
-            width / max(width), dtype=torch.float32
-        )
+        num_fractures = torch.bernoulli(width / max(width)) + torch.bernoulli(width / max(width))
 
         # the thicker the fracture(s), the higher up color it is
         # on the spectrum
@@ -86,7 +82,7 @@ def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=Non
     elif graph == "collider":
         # the width of the digit is causes both the color
         # and the presence of a fracture
-        width = torch.rand(size=(n_samples, 1), dtype=torch.float32) * 2
+        width = torch.rand(size=(n_samples, 1)) * 2
 
         # the thicker the digit, the higher up color it is
         # on the spectrum

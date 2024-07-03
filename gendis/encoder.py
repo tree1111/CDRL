@@ -219,6 +219,8 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
             )
 
         if flows is None:
+            # This is the same as the latent_dim property, but it is not defined yet, so we
+            # copy the code here.
             latent_dim = graph.number_of_nodes() if cluster_sizes is None else np.sum(cluster_sizes)
             flows = make_spline_flows(
                 n_flows, latent_dim, n_hidden_dim, n_layers, permutation=False

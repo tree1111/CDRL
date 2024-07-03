@@ -37,6 +37,8 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
     intervention_target_perm: Optional[list[int]]
         Permutation of the intervention targets. If None, a random permutation is used. Only used if
         intervention_target_misspec is True. Default: None.
+    flatten: bool
+        Whether to flatten the data. Default: False.
 
     Methods
     -------
@@ -59,6 +61,7 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         train_size: float = 0.9,
         val_size: float = 0.05,
         log_dir: Optional[Path] = None,
+        flatten: bool = False,
     ) -> None:
         super().__init__()
         self.batch_size = batch_size
@@ -69,6 +72,7 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         self.train_size = train_size
         self.val_size = val_size
         self.datasets = datasets
+        self.flatten = flatten
 
     def setup(self, stage: Optional[str] = None) -> None:
         meta_labels = collections.defaultdict(list)
@@ -94,6 +98,10 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         label = torch.tensor(meta_labels["label"])
         intervention_targets = torch.tensor(meta_labels["intervention_targets"])
         distr_indicators = torch.tensor(distr_indicators)
+
+        if self.flatten:
+            # flatten the data per sample
+            x = x.view(x.size(0), -1)
 
         print(x.shape, len(meta_labels), width.shape, color.shape, label.shape)
         # create Tensors for each dataset

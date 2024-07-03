@@ -47,6 +47,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
         fix_mechanisms: bool = False,
+        use_matrix: bool = False,
     ):
         """Parametric distribution over a clustered causal graph.
 
@@ -68,6 +69,20 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
             all parents are removed).
         fix_mechanisms : bool, optional
             Whether to fix the mechanisms, by default False.
+        use_matrix : bool, optional
+            Whether to use a matrix to represent the edge coefficients, by default False.
+            If False, a vector is used and the kronecker product is used to compute the
+            product of the coefficients with the parent variables.
+
+        Attributes
+        ----------
+        coeff_values : nn.ParameterList of length (n_nodes) each of length (cluster_dim + 1)
+            The coefficients for the linear mechanisms for each variable in the DAG.
+            The last element in the list is the constant term.
+        noise_means : nn.ParameterList of length (n_nodes) each of length (cluster_dim)
+            The means for the noise distributions for each variable in the DAG.
+        noise_stds : nn.ParameterList of length (n_nodes) each of length (cluster_dim)
+            The standard deviations for the noise distributions for each variable in the DAG.
         """
         super().__init__()
 
@@ -75,13 +90,31 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         self.cluster_sizes = cluster_sizes
         self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
+        self.use_matrix = use_matrix
+
+        # map the node in adjacency matrix to a cluster size in the latent space
+        self.cluster_mapping = dict()
+        for idx in range(len(cluster_sizes)):
+            start = np.sum(cluster_sizes[:idx])
+            end = start + cluster_sizes[idx]
+            self.cluster_mapping[idx] = (start, end)
 
         self.dag = nx.DiGraph(adjacency_matrix)
+        self.latent_dim = (
+            self.dag.number_of_nodes() if self.cluster_sizes is None else np.sum(self.cluster_sizes)
+        )
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # parametrize the trainable coefficients for the linear mechanisms
+        # this will be a full matrix of coefficients for each variable in the DAG
         coeff_values, coeff_values_requires_grad = set_initial_edge_coeffs(
-            self.dag, min_val=-1.0, max_val=1.0, device=device
+            self.dag,
+            min_val=-1.0,
+            max_val=1.0,
+            cluster_mapping=self.cluster_mapping,
+            use_matrix=self.use_matrix,
+            device=device,
         )
         environments = torch.ones(intervention_targets_per_distr.shape[0], 1, device=device)
 
@@ -91,6 +124,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
             fix_mechanisms,
             intervention_targets_per_distr,
             environments=environments,
+            n_dim_per_node=cluster_sizes,
             min_val=-0.5,
             max_val=0.5,
             device=device,
@@ -101,6 +135,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
             self.dag,
             fix_mechanisms,
             intervention_targets_per_distr,
+            n_dim_per_node=cluster_sizes,
             environments=environments,
             min_val=0.5,
             max_val=1.5,
@@ -121,7 +156,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
 
         Parameters
         ----------
-        v_latent : Tensor of shape (n_distributions, n_nodes)
+        v_latent : Tensor of shape (n_distributions, latent_dim)
             The "representation" layer for latent variables v.
         e : Tensor of shape (n_distributions, 1)
             Indicator of different environments (overloaded to indicate intervention
@@ -135,16 +170,22 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
             The log probability of the latent variables in each distribution.
         """
         log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
+        latent_dim = v_latent.shape[1]
+
         for env in e.unique():
             env_mask = (e == env).flatten()
 
             v_env = v_latent[env_mask, :]
             intervention_targets_env = intervention_targets[env_mask, :]
-            # assert len(intervention_targets_env) == 1, f"{intervention_targets_env}, {intervention_targets}, {e}, {env}"
 
             # iterate over all variables in the latent space in topological order
-            for idx in range(v_latent.shape[1]):
+            for idx in range(self.dag.number_of_nodes()):
                 parents = list(self.dag.predecessors(idx))
+
+                # get start/end in the representation for this cluster
+                start, end = self.cluster_mapping[idx]
+                len_cluster = end - start
+                parents_rep_idx = np.arange(start, end, dtype=int)
 
                 # compute the contribution of the parents
                 if len(parents) == 0 or (
@@ -153,17 +194,21 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
                 ):
                     parent_contribution = 0.0
                 else:
+                    # get coeffieicnts for the parents
+                    # which is a vector of coefficients for each parent
                     coeffs_raw = self.coeff_values[idx][:-1]
                     if isinstance(coeffs_raw, nn.ParameterList):
                         coeffs_raw = torch.cat([c for c in coeffs_raw])
                     parent_coeffs = coeffs_raw.to(v_latent.device)
-                    parent_contribution = parent_coeffs.matmul(v_env[:, parents].T)
+                    parent_contribution = parent_coeffs.matmul(v_env[:, parents_rep_idx].T)
 
                 # XXX: compute the contributions of the confounders
 
                 # compute the contribution of the noise
                 noise_env_idx = int(env) if intervention_targets_env[0, idx] == 1 else 0
-                var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(v_env[:, idx])
+                var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(
+                    v_env[:, parents_rep_idx]
+                )
                 noise_coeff = self.coeff_values[idx][-1].to(v_latent.device)
                 noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
                 var *= noise_coeff**2
@@ -172,7 +217,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
                 # parametrized normal distribution using the parents mean and variance
                 log_p[env_mask] += torch.distributions.Normal(
                     parent_contribution + noise_contribution, var.sqrt()
-                ).log_prob(v_env[:, idx])
+                ).log_prob(v_env[:, parents_rep_idx])
 
         return log_p
 
@@ -209,7 +254,7 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
     """
 
     def multi_env_log_prob(self, x: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
-        # compute the log-likelihood over the non-intervened targets
+        # compute the log-likelihood over the non-intervened targets for each sample
         gaussian_nll = gaussian_nll_loss(
             x, torch.zeros_like(x), torch.ones_like(x), full=True, reduction="none"
         )
@@ -268,16 +313,22 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         self.n_layers = n_layers
         self.n_hidden_dim = n_hidden_dim
 
-        latent_dim = adjacency_matrix.shape[0]
+        self.latent_dim = (
+            self.dag.number_of_nodes() if self.cluster_sizes is None else np.sum(self.cluster_sizes)
+        )
 
         # get the permutation according to topological order for the variables
         # in the latent space
-        self.perm = torch.tensor(
-            list(nx.topological_sort(nx.DiGraph(self.adjacency_matrix))),
-            dtype=torch.long,
-        )
+        self.perm = []
+        start = 0
+        for idx in list(nx.topological_sort(nx.DiGraph(self.adjacency_matrix))):
+            self.perm.extend(range(start, cluster_sizes[idx] + start))
+            start = cluster_sizes[idx]
+        self.perm = torch.tensor(self.perm)
 
-        flows = make_spline_flows(n_flows, latent_dim, n_hidden_dim, n_layers, permutation=False)
+        flows = make_spline_flows(
+            n_flows, self.latent_dim, n_hidden_dim, n_layers, permutation=False
+        )
         q0: MultiEnvBaseDistribution = MultiEnvBaseDistribution()
 
         super().__init__(q0, flows)
@@ -307,17 +358,24 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         log_q : Tensor
             The log probability of the latent representation.
         """
+        representation_intervention_targets = intervention_target_to_cluster_target(
+            intervention_targets, self.cluster_sizes
+        )
+
         # permute inputs to be in topological order
-        v_latent = v_latent[:, self.perm]
+        # do we need the topological order
+        v_latent = v_latent[:, :]
 
         # map latent V to the exogenous variables
-        log_q, u = self._determinant_terms(intervention_targets, v_latent)
+        log_q, u = self._determinant_terms(representation_intervention_targets, v_latent)
 
         # compute the log probability over 'u' for the non-intervened targets
-        prob_terms = self.q0.multi_env_log_prob(u, e, intervention_targets)
+        prob_terms = self.q0.multi_env_log_prob(u, e, representation_intervention_targets)
 
         # compute the log probability over 'v_latent' for the intervened targets
-        prob_terms_intervened = self._prob_terms_intervened(intervention_targets, v_latent)
+        prob_terms_intervened = self._prob_terms_intervened(
+            representation_intervention_targets, v_latent
+        )
         log_q += prob_terms + prob_terms_intervened
 
         return log_q
@@ -331,7 +389,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         ----------
         intervention_targets : Tensor of shape (n_distributions, n_clusters)
             The intervention targets for each cluster-variable in each environment.
-        v_latent : Tensor of shape (n_distributions, n_clusters)
+        v_latent : Tensor of shape (n_distributions, latent_dim)
             The latent variables after applying the flow transformations. These are the
             input coming from a neural network output, which are mapped to exogenous noise
             variables.
@@ -395,3 +453,31 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         mask = intervention_targets.to(bool)
         prob_terms_intervention_targets = -(mask * gaussian_nll).sum(dim=1)
         return prob_terms_intervention_targets
+
+
+def intervention_target_to_cluster_target(
+    intervention_targets: Tensor, cluster_sizes: np.ndarray
+) -> Tensor:
+    """Convert intervention targets to cluster targets.
+
+    Parameters
+    ----------
+    intervention_targets : Tensor of shape (n_distributions, n_clusters)
+        The intervention targets for each cluster-variable in each environment.
+    cluster_sizes : np.ndarray of shape (n_clusters, 1)
+        The size/dimensionality of each cluster.
+
+    Returns
+    -------
+    cluster_targets : Tensor of shape (n_distributions, latent_dim)
+        The intervention targets for each variable in each distribution.
+    """
+    cluster_targets = torch.zeros(
+        intervention_targets.shape[0], np.sum(cluster_sizes), device=intervention_targets.device
+    )
+    start = 0
+    for idx, cluster_size in enumerate(cluster_sizes):
+        end = start + cluster_size
+        cluster_targets[:, start:end] = intervention_targets[:, idx].unsqueeze(1)
+        start = end
+    return cluster_targets

@@ -126,8 +126,6 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
                 The environment indicators.
             - int_target: Tensor of shape (n_samples, n_outputs)
                 The intervention targets.
-            - log_prob_gt: Tensor of shape (n_samples,)
-                The ground-truth log probabilities.
         batch_idx : int
             Index of the batch.
 
@@ -169,8 +167,6 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
                 The environment indicators.
             - int_target: Tensor of shape (n_samples, n_outputs)
                 The intervention targets.
-            - log_prob_gt: Tensor of shape (n_samples,)
-                The ground-truth log probabilities.
         batch_idx : int
             Index of the batch.
 
@@ -180,55 +176,74 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
             Returns:
                 - log_prob: Tensor of shape (n_samples,)
                     The log probability of the data given the encoder.
-                - log_prob_gt: Tensor of shape (n_samples,)
-                    The ground-truth log probabilities.
                 - v: Tensor of shape (n_samples, n_outputs)
                     The ground-truth latent variables.
                 - v_hat: Tensor of shape (n_samples, n_outputs)
                     The estimated latent variables.
         """
-        x, v, u, e, int_target, log_prob_gt = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, e, int_target)
+        (
+            x,
+            width,
+            color,
+            fracture_thickness,
+            fracture_num_fractures,
+            label,
+            distr_indicators,
+            intervention_targets,
+        ) = batch
+        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
 
         v_hat = self(x)
-
+        print(
+            log_prob.shape,
+            x.shape,
+            width.shape,
+            color.shape,
+            fracture_thickness.shape,
+            fracture_num_fractures.shape,
+            label.shape,
+        )
         return {
             "log_prob": log_prob,
-            "log_prob_gt": log_prob_gt,
-            "v": v,
+            "v": [width, color, fracture_thickness, fracture_num_fractures, label],
             "v_hat": v_hat,
         }
 
     def validation_epoch_end(self, outputs: List[dict]) -> None:
         log_prob = torch.cat([o["log_prob"] for o in outputs])
-        log_prob_gt = torch.cat([o["log_prob_gt"] for o in outputs])
-
-        v = torch.cat([o["v"] for o in outputs])
         v_hat = torch.cat([o["v_hat"] for o in outputs])
-        mcc = mean_correlation_coefficient(v_hat, v)
-        mcc_spearman = mean_correlation_coefficient(v_hat, v, method="spearman")
-
         loss = -log_prob.mean()
-        loss_gt = -log_prob_gt.mean()
-
         self.log("val_loss", loss, prog_bar=True)
-        self.log("val_loss_gt", loss_gt, prog_bar=False)
-        self.log("val_mcc", mcc.mean(), prog_bar=True)
-        for i, mcc_value in enumerate(mcc):
-            self.log(f"val_mcc_{i}", mcc_value, prog_bar=False)
-        self.log("val_mcc_spearman", mcc_spearman.mean(), prog_bar=True)
-        for i, mcc_value in enumerate(mcc_spearman):
-            self.log(f"val_mcc_spearman_{i}", mcc_value, prog_bar=False)
+
+        # v = torch.cat([o["v"] for o in outputs])
+        # mcc = mean_correlation_coefficient(v_hat, v)
+        # mcc_spearman = mean_correlation_coefficient(v_hat, v, method="spearman")
+
+        # self.log("val_mcc", mcc.mean(), prog_bar=True)
+        # for i, mcc_value in enumerate(mcc):
+        #     self.log(f"val_mcc_{i}", mcc_value, prog_bar=False)
+        # self.log("val_mcc_spearman", mcc_spearman.mean(), prog_bar=True)
+        # for i, mcc_value in enumerate(mcc_spearman):
+        #     self.log(f"val_mcc_spearman_{i}", mcc_value, prog_bar=False)
 
     def test_step(
         self, batch: tuple[Tensor, ...], batch_idx: int
     ) -> Union[None, dict[str, Tensor]]:
-        x, v, u, e, int_target, log_prob_gt = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, e, int_target)
+        (
+            x,
+            width,
+            color,
+            fracture_thickness,
+            fracture_num_fractures,
+            label,
+            distr_indicators,
+            intervention_targets,
+        ) = batch
+        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
 
         return {
             "log_prob": log_prob,
-            "v": v,
+            "v": [width, color, fracture_thickness, fracture_num_fractures, label],
             "v_hat": self(x),
         }
 
@@ -280,10 +295,11 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         # do not train any parameters that are not supposed to be trained
         # XXX: in this case, we do not update exogenous variable distributions that are fixed
         for param_idx, (distr_idx, idx) in enumerate(product(range(num_envs), range(num_vars))):
-            if not self.encoder.q0.noise_means_requires_grad[distr_idx][idx]:
-                list(self.encoder.q0.noise_means.parameters())[param_idx].grad = None
-            if not self.encoder.q0.noise_stds_requires_grad[distr_idx][idx]:
-                list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
+            if hasattr(self.encoder.q0, "noise_means_requires_grad"):
+                if not self.encoder.q0.noise_means_requires_grad[distr_idx][idx]:
+                    list(self.encoder.q0.noise_means.parameters())[param_idx].grad = None
+                if not self.encoder.q0.noise_stds_requires_grad[distr_idx][idx]:
+                    list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
 
 
 class NonlinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):

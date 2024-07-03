@@ -3,19 +3,14 @@ import argparse
 from copy import deepcopy
 import logging
 import random
-from collections import defaultdict
 from os.path import join
 import numpy as np
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
-import joblib
 import inspect
-import os.path
 import pytorch_lightning as pl
-import torch
 
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.model import NonlinearNeuralClusteredASCMFlow, LinearNeuralClusteredASCMFlow
+from gendis.model import NonlinearNeuralClusteredASCMFlow
 
 
 def generate_list(x, n_clusters):
@@ -219,7 +214,7 @@ if __name__ == "__main__":
     trainer.test(datamodule=data_module)
 
     # save the output
-    x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
+    # x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
     print(x.shape)
     print(e.shape)
 
