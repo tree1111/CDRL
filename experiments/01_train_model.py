@@ -67,7 +67,7 @@ if __name__ == "__main__":
     results_dir = Path("./results/")
     results_dir.mkdir(exist_ok=True, parents=True)
 
-    root = "/Users/adam2392/pytorch_data/"
+    root = "/home/adam2392/projects/data/"
     print(args)
     # root = args.root_dir
     seed = args.seed
