@@ -147,7 +147,6 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
         loss = -log_prob.mean()
 
-        self.log(f"(batch={batch_idx})...")
         self.log(f"train_loss", loss, prog_bar=False)
         return loss
 
