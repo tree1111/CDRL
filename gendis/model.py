@@ -147,7 +147,8 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
         loss = -log_prob.mean()
 
-        self.log(f"train_loss (batch={batch_idx})", loss, prog_bar=False)
+        self.log(f"(batch={batch_idx})...")
+        self.log(f"train_loss", loss, prog_bar=False)
         return loss
 
     def validation_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> dict[str, Tensor]:

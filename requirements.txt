@@ -8,3 +8,6 @@ torch
 torchvision
 wandb
 pywhy-graphs
+scikit-image
+scikit-learn
+joblib

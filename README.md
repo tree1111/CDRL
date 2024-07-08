@@ -11,3 +11,5 @@ Next, install all the packages we need to run the experiments
     conda activate cdrl
     pip install -r requirements.txt
 
+
+    python -c "from gendis.model import NonlinearNeuralClusteredASCMFlow"
