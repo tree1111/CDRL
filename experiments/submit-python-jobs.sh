@@ -15,7 +15,7 @@ NUM_GPUS=7
 # Define the training seeds to match np.linspace(1, 10000, 11, dtype=int)
 # training_seeds=(1 1000 2000 3000 4000 5000 6000 7000 8000 9000 10000)
 # Define the training seeds from 1 to 100
-training_seeds=($(seq 3 4))
+training_seeds=($(seq 5 6))
 
 # Loop over the training seeds and submit a job for each seed
 for i in "${!training_seeds[@]}"
@@ -34,7 +34,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  nohup $CMD > output_glow_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
+  nohup $CMD > output_glow_max5k_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
   echo $GPU_INDEX
   echo "Submitted job for training seed: $TRAINING_SEED for script: $SCRIPT_NAME"

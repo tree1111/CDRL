@@ -182,15 +182,15 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         )
 
         v_hat = self(x)
-        print(
-            log_prob.shape,
-            x.shape,
-            width.shape,
-            color.shape,
-            fracture_thickness.shape,
-            fracture_num_fractures.shape,
-            label.shape,
-        )
+        # print(
+        #     log_prob.shape,
+        #     x.shape,
+        #     width.shape,
+        #     color.shape,
+        #     fracture_thickness.shape,
+        #     fracture_num_fractures.shape,
+        #     label.shape,
+        # )
         return {
             "log_prob": log_prob,
             "v": [width, color, fracture_thickness, fracture_num_fractures, label],

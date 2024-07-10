@@ -83,10 +83,8 @@ class CausalMultiscaleFlow(nn.Module):
                 log_q += log_det
 
                 # flatten the latent factors
-                print(z_.shape)
                 z_ = self.flatten_layer(z_)
                 n_dims = z_.shape[1]
-                print(z_.shape, prev_n_dims, n_dims + prev_n_dims)
                 v_latent[:, prev_n_dims : n_dims + prev_n_dims] = z_
                 prev_n_dims = n_dims
             # else:
