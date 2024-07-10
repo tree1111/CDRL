@@ -34,7 +34,7 @@ class MultidistrCausalFlow(nf.distributions.BaseDistribution, ABC):
     def log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def sample(self, num_samples=1, intervention_targets: Tensor):
+    def sample(self, num_samples=1, intervention_targets: Tensor = None):
         raise NotImplementedError
 
 
@@ -148,15 +148,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.noise_means_requires_grad = noise_means_requires_grad
         self.noise_stds_requires_grad = noise_stds_requires_grad
 
-    def forward(self, num_samples=1, intervention_targets: Tensor):
+    def forward(self, num_samples=1, intervention_targets: Tensor = None):
         # TODO: NEED TO IMPLEMENT THE FORWARD SAMPLING PROCEDURE
 
         # sample from the noise distributions for each variable over the DAG
         samples = []
 
-        eps = torch.randn(
-            (num_samples,) + self.shape, dtype=self.loc.dtype, device=self.loc.device
-        )
+        eps = torch.randn((num_samples,) + self.shape, dtype=self.loc.dtype, device=self.loc.device)
         if self.temperature is None:
             log_scale = self.log_scale
         else:
@@ -166,7 +164,6 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             log_scale + 0.5 * torch.pow(eps, 2), list(range(1, self.n_dim + 1))
         )
         return z, log_p
-
 
     def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Multi-environment log probability of the latent variables.

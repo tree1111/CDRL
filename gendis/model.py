@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from itertools import product
 from typing import List, Optional, Union
 
@@ -9,18 +7,8 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 
-from .base import CausalMultiscaleFlow
-from .encoder import (
-    ClusteredCausalEncoder,
-    NonparametricClusteredCausalEncoder,
-    ParametricClusteredCausalEncoder,
-)
+from .encoder import CausalMultiscaleFlow
 from .metrics import mean_correlation_coefficient
-from .normalizing_flow.distribution import (
-    ClusteredCausalDistribution,
-    NaiveMultiEnvCausalDistribution,
-    NonparametricClusteredCausalDistribution,
-)
 
 
 def misspecify_adjacency(graph: np.ndarray):
@@ -50,9 +38,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
 
     Attributes
     ----------
-    graph : np.ndarray, shape (num_nodes, num_nodes)
-        Adjacency matrix of the causal graph assumed by the model. This is not necessarily
-        the true adjacency matrix of the data generating process (see below).
+    encoder : CausalMultiscaleFlow
+        The causal encoder. Needs to be set in subclasses. The inverse of the encoder is the
+        unmixing function.
     lr : float
         Learning rate for the optimizer.
     weight_decay : float
@@ -62,9 +50,6 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         "cosine" or None. Default: None.
     lr_min : float
         Minimum learning rate for the scheduler. Default: 0.0.
-    encoder : ClusteredCausalEncoder
-        The causal encoder. Needs to be set in subclasses. The inverse of the encoder is the
-        unmixing function.
 
     Methods
     -------
@@ -93,19 +78,13 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
     def __init__(
         self,
         encoder,
-        num_distrs: int,
-        graph: np.ndarray,
-        cluster_sizes: List[int] = None,
         lr: float = 1e-2,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
     ) -> None:
         super().__init__()
-        self.cluster_sizes = cluster_sizes
-        self.graph = graph
         self.encoder = encoder
-        self.num_distrs = num_distrs
 
         self.lr = lr
         self.weight_decay = weight_decay
@@ -313,185 +292,3 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
                     list(self.encoder.causalq0.noise_means.parameters())[param_idx].grad = None
                 if not self.encoder.causalq0.noise_stds_requires_grad[distr_idx][idx]:
                     list(self.encoder.causalq0.noise_stds.parameters())[param_idx].grad = None
-
-
-class NonlinearNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
-    """Nonlinear Neural Clustered Augmented SCM Flow Model.
-
-    Specific class for nonlinear Neural augmented structural causal models (NASCM-Flow). It implements the
-    training loop and the evaluation metrics.
-
-    The model is an encoder-decoder model where the encoding and decoding uses flows as the
-    layers (i.e. invertible transformations).
-
-    Attributes
-    ----------
-    graph : np.ndarray, shape (num_nodes, num_nodes)
-        Adjacency matrix of the causal graph assumed by the model. This is not necessarily
-        the true adjacency matrix of the data generating process (see below).
-    cluster_sizes : np.ndarray of shape (n_clusters, 1)
-        The size/dimensionality of each cluster.
-    intervention_targets_per_distr : Optional[Tensor], optional
-        The intervention targets per distribution, by default None, corresponding
-        to no interventions and a single distribution. The single distribution is
-        assumed to be observational.
-    hard_interventions_per_distr : Tensor of shape (n_distributions, n_clusters)
-        Whether the intervention target for each cluster-variable is hard (i.e.
-        all parents are removed).
-    fix_mechanisms : bool, optional
-        Whether to fix the mechanisms, by default False.
-    lr : float
-        Learning rate for the optimizer.
-    weight_decay : float
-        Weight decay for the optimizer.
-    lr_scheduler : str
-        Learning rate scheduler to use. If None, no scheduler is used. Options are
-        "cosine" or None. Default: None.
-    lr_min : float
-        Minimum learning rate for the scheduler. Default: 0.0.
-    n_flows : int
-        Number of flows to use in the nonlinear unmixing function. Default: 1.
-    n_hidden_dim : int
-        Hidden dimension of the neural network used in the nonlinear unmixing function. Default: 128.
-    n_layers : int
-        Number of hidden layers of the neural network used in the nonlinear unmixing function. Default: 3.
-    encoder : NonparametricClusteredCausalEncoder
-        The causal encoder. The inverse of the encoder is the
-        unmixing function.
-    """
-
-    def __init__(
-        self,
-        graph: np.ndarray,
-        cluster_sizes: List[int] = None,
-        intervention_targets_per_distr: Optional[torch.Tensor] = None,
-        hard_interventions_per_distr: Optional[Tensor] = None,
-        fix_mechanisms: bool = False,
-        lr: float = 1e-2,
-        weight_decay: float = 0,
-        lr_scheduler: Optional[str] = None,
-        lr_min: float = 0.0,
-        n_flows: int = 1,
-        n_hidden_dim: int = 128,
-        n_layers: int = 3,
-        flows=None,
-        merges=None,
-    ) -> None:
-        q0 = NonparametricClusteredCausalDistribution(
-            adjacency_matrix=graph,
-            cluster_sizes=cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-            n_flows=n_flows,
-            n_hidden_dim=n_hidden_dim,
-            n_layers=n_layers,
-        )
-        encoder = NonparametricClusteredCausalEncoder(
-            q0=q0,
-            graph=graph,
-            cluster_sizes=self.cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-            n_flows=n_flows,
-            n_hidden_dim=n_hidden_dim,
-            n_layers=n_layers,
-            flows=flows,
-            merges=merges,
-        )
-        super().__init__(
-            encoder=encoder,
-            graph=graph,
-            cluster_sizes=cluster_sizes,
-            lr=lr,
-            weight_decay=weight_decay,
-            lr_scheduler=lr_scheduler,
-            lr_min=lr_min,
-        )
-
-
-class LinearNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
-    """Causal ASCM flow model with linear unmixing function."""
-
-    def __init__(
-        self,
-        graph: np.ndarray,
-        cluster_sizes: List[int] = None,
-        intervention_targets_per_distr: Tensor = None,
-        hard_interventions_per_distr: Tensor = None,
-        fix_mechanisms: bool = True,
-        lr: float = 1e-2,
-        weight_decay: float = 0,
-        lr_scheduler: Optional[str] = None,
-        lr_min: float = 0.0,
-    ) -> None:
-        q0 = ClusteredCausalDistribution(
-            adjacency_matrix=graph,
-            cluster_sizes=cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-            use_matrix=False,
-        )
-        encoder = ParametricClusteredCausalEncoder(
-            q0=q0,
-            graph=graph,
-            cluster_sizes=cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-        )
-        super().__init__(
-            encoder=encoder,
-            graph=graph,
-            cluster_sizes=cluster_sizes,
-            lr=lr,
-            weight_decay=weight_decay,
-            lr_scheduler=lr_scheduler,
-            lr_min=lr_min,
-        )
-
-
-class NaiveNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
-    """Naive CauCA model with nonlinear unmixing function, but no causal dependencies."""
-
-    def __init__(
-        self,
-        graph: np.ndarray,
-        cluster_sizes: List[int] = None,
-        lr: float = 1e-2,
-        weight_decay: float = 0,
-        lr_scheduler: Optional[str] = None,
-        lr_min: float = 0.0,
-        intervention_targets_per_distr: Optional[torch.Tensor] = None,
-        hard_interventions_per_distr: Optional[Tensor] = None,
-        fix_mechanisms: bool = False,
-        n_flows: int = 1,
-        n_hidden_dim: int = 128,
-        n_layers: int = 3,
-    ) -> None:
-        q0 = NaiveMultiEnvCausalDistribution(
-            adjacency_matrix=graph,
-        )
-        encoder = NonparametricClusteredCausalEncoder(
-            q0=q0,
-            graph=graph,
-            cluster_sizes=cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-            n_flows=n_flows,
-            n_hidden_dim=n_hidden_dim,
-            n_layers=n_layers,
-        )
-
-        super().__init__(
-            encoder=encoder,
-            graph=graph,
-            cluster_sizes=cluster_sizes,
-            lr=lr,
-            weight_decay=weight_decay,
-            lr_scheduler=lr_scheduler,
-            lr_min=lr_min,
-        )

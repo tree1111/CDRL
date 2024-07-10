@@ -192,7 +192,7 @@ class CausalMultiscaleFlow(nn.Module):
         if temperature is not None:
             self.reset_temperature()
         return z, log_q
-    
+
     def set_temperature(self, temperature):
         """Set temperature for temperature a annealed sampling
 
@@ -204,8 +204,7 @@ class CausalMultiscaleFlow(nn.Module):
                 q0.temperature = temperature
             else:
                 raise NotImplementedError(
-                    "One base function does not "
-                    "support temperature annealed sampling"
+                    "One base function does not " "support temperature annealed sampling"
                 )
 
     def reset_temperature(self):

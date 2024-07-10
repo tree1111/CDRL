@@ -10,7 +10,7 @@ import torch
 import torchvision
 
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.encoder import NonparametricClusteredCausalEncoder
+from gendis.encoder import CausalMultiscaleFlow, NonparametricClusteredCausalEncoder
 from gendis.model import NeuralClusteredASCMFlow
 from gendis.normalizing_flow.distribution import NonparametricClusteredCausalDistribution
 
@@ -103,9 +103,9 @@ if __name__ == "__main__":
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
-            nf.utils.Scale(255.0 / 256.0),
-            nf.utils.Jitter(1 / 256.0),
-            torchvision.transforms.RandomRotation(350),
+            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
+            nf.utils.Jitter(1 / 256.0),  # apply random generation
+            torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 
@@ -113,6 +113,7 @@ if __name__ == "__main__":
     datasets = []
     intervention_targets_per_distr = []
     hard_interventions_per_distr = None
+    num_distrs = 0
     for intervention_idx in [None, 1, 2, 3]:
         dataset = CausalMNIST(
             root=root,
@@ -126,7 +127,7 @@ if __name__ == "__main__":
         )
         dataset.prepare_dataset(overwrite=False)
         datasets.append(dataset)
-
+        num_distrs += 1
         intervention_targets_per_distr.append(dataset.intervention_targets)
 
     # now we can wrap this in a pytorch lightning datamodule
@@ -136,7 +137,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         intervention_targets_per_distr=intervention_targets_per_distr,
         log_dir=log_dir,
-        flatten=True,
+        flatten=False,
     )
     data_module.setup()
 
@@ -156,7 +157,7 @@ if __name__ == "__main__":
     cluster_sizes = generate_list(784 * 3, 3)
 
     # 01: Define the causal base distribution with the graph
-    q0 = NonparametricClusteredCausalDistribution(
+    causalq0 = NonparametricClusteredCausalDistribution(
         adjacency_matrix=graph,
         cluster_sizes=cluster_sizes,
         intervention_targets_per_distr=intervention_targets_per_distr,
@@ -167,51 +168,53 @@ if __name__ == "__main__":
         n_layers=net_hidden_layers,
     )
 
-    # 02: Define the flow layers
-    num_flow_layers = 10
-    num_flow_blocks = 20
-    hidden_channels = 256
+    input_shape = (3, 28, 28)
     channels = 3
+
+    # Define flows
+    L = 2
+    K = 3
+    n_dims = np.prod(input_shape)
+    hidden_channels = 256
     split_mode = "channel"
     scale = True
+
+    stride_factor = 2
+
+    # Set up flows, distributions and merge operations
+    merges = []
     flows = []
-    for i in range(num_flow_layers):
-        # Neural network with two hidden layers having 64 units each
-        # Last layer is initialized by zeros making training more stable
-        param_map = nf.nets.MLP([1, 64, 2], init_zeros=True)
-        # Add flow layer
-        flows.append(nf.flows.AffineCouplingBlock(param_map))
-        # Swap dimensions
-        flows.append(nf.flows.Permute(2, mode="swap"))
-
-        for j in range(num_flow_blocks):
-            flows.append(
-                nf.flows.GlowBlock(
-                    channels * 2 ** (num_flow_layers + 1 - i),
-                    hidden_channels,
-                    split_mode=split_mode,
-                    scale=scale,
-                )
+    for i in range(L):
+        flows_ = []
+        for j in range(K):
+            n_chs = channels * 2 ** (L + 1 - i)
+            flows_ += [
+                nf.flows.GlowBlock(n_chs, hidden_channels, split_mode=split_mode, scale=scale)
+            ]
+        flows_ += [nf.flows.Squeeze()]
+        flows += [flows_]
+        if i > 0:
+            merges += [nf.flows.Merge()]
+            latent_shape = (
+                input_shape[0] * stride_factor ** (L - i),
+                input_shape[1] // stride_factor ** (L - i),
+                input_shape[2] // stride_factor ** (L - i),
             )
-
-        flows.append(nf.flows.Squeeze())
+        else:
+            latent_shape = (
+                input_shape[0] * stride_factor ** (L + 1),
+                input_shape[1] // stride_factor**L,
+                input_shape[2] // stride_factor**L,
+            )
+        print(n_chs, np.prod(latent_shape), latent_shape)
 
     # 03: Define the final normalizing flow model
-    encoder = NonparametricClusteredCausalEncoder(
-        graph,
-        cluster_sizes=cluster_sizes,
-        intervention_targets_per_distr=intervention_targets_per_distr,
-        hard_interventions_per_distr=hard_interventions_per_distr,
-        fix_mechanisms=fix_mechanisms,
-        flows=flows,
-        q0=q0,
-    )
+    # Construct flow model with the multiscale architecture
+    encoder = CausalMultiscaleFlow(causalq0, flows, merges)
 
     # 04a: Define now the full pytorch lightning model
     model = NeuralClusteredASCMFlow(
         encoder=encoder,
-        cluster_sizes=generate_list(784 * 3, 3),
-        graph=adjacency_matrix,
         lr=lr,
         lr_scheduler=lr_scheduler,
         lr_min=lr_min,
