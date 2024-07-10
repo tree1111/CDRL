@@ -1,15 +1,16 @@
 import collections
 from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy import stats
+from joblib import Parallel, delayed
 from PIL import Image
-from joblib import delayed, Parallel
-from .morphomnist import morpho, perturb
-
+from scipy import stats
 from torchvision.datasets.mnist import MNIST
 from torchvision.transforms.functional import pil_to_tensor
-import matplotlib.pyplot as plt
+
+from .morphomnist import morpho, perturb
 
 
 def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=None):
@@ -225,7 +226,6 @@ class CausalMNIST(MNIST):
 
             dataset = torch.load(dataset_fpath)
             n_samples = len(dataset)
-            print(dataset[0][1].keys())
 
             imgs = torch.zeros((n_samples, 3, 28, 28))
             meta_labels = collections.defaultdict(list)
@@ -289,7 +289,7 @@ class CausalMNIST(MNIST):
         - fracture_num_fractures
         - label
         """
-        img, meta_label = self.data[index]
+        img, meta_label = self.data[index], self.meta_labels[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image

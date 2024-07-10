@@ -1,9 +1,9 @@
-import pytest
 import numpy as np
+import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from gendis.model import NonlinearNeuralClusteredASCMFlow, LinearNeuralClusteredASCMFlow
+from gendis.model import LinearNeuralClusteredASCMFlow, NonlinearNeuralClusteredASCMFlow
 
 
 @pytest.fixture

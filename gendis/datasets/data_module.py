@@ -1,13 +1,12 @@
 import collections
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
-from torch.utils.data import random_split
 from pytorch_lightning import LightningDataModule
 from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, random_split
 from torchvision.datasets import VisionDataset
 
 from .utils import summary_statistics

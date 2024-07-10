@@ -1,19 +1,16 @@
 import os
 
-import numpy as np
-from PIL import Image
-
 import matplotlib.pyplot as plt
-from torchvision.utils import save_image
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import grad
-from torchvision import transforms
-from torchvision import datasets
 import torchvision.datasets.utils as dataset_utils
+from PIL import Image
+from torch.autograd import grad
+from torchvision import datasets, transforms
+from torchvision.utils import save_image
 
 
 def gen_scm(cg, n):

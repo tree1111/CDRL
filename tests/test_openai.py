@@ -1,5 +1,6 @@
 if __name__ == "__main__":
     import os
+
     from openai import AzureOpenAI
 
     api_key = os.getenv("OPENAI_API_KEY")  # need to fill this in

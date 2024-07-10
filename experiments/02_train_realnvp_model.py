@@ -10,7 +10,9 @@ import torch
 import torchvision
 
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.model import NonlinearNeuralClusteredASCMFlow
+from gendis.encoder import NonparametricClusteredCausalEncoder
+from gendis.model import NeuralClusteredASCMFlow
+from gendis.normalizing_flow.distribution import NonparametricClusteredCausalDistribution
 
 
 def generate_list(x, n_clusters):
@@ -149,28 +151,82 @@ if __name__ == "__main__":
     net_hidden_layers = 3
     net_hidden_layers_cbn = 3
     fix_mechanisms = False
-    model = NonlinearNeuralClusteredASCMFlow(
-        cluster_sizes=generate_list(784 * 3, 3),
-        graph=adjacency_matrix,
+
+    graph = adjacency_matrix
+    cluster_sizes = generate_list(784 * 3, 3)
+
+    # 01: Define the causal base distribution with the graph
+    q0 = NonparametricClusteredCausalDistribution(
+        adjacency_matrix=graph,
+        cluster_sizes=cluster_sizes,
         intervention_targets_per_distr=intervention_targets_per_distr,
         hard_interventions_per_distr=hard_interventions_per_distr,
+        fix_mechanisms=fix_mechanisms,
         n_flows=n_flows,
         n_hidden_dim=net_hidden_dim,
         n_layers=net_hidden_layers,
+    )
+
+    # 02: Define the flow layers
+    num_flow_layers = 10
+    num_flow_blocks = 20
+    hidden_channels = 256
+    channels = 3
+    split_mode = "channel"
+    scale = True
+    flows = []
+    for i in range(num_flow_layers):
+        # Neural network with two hidden layers having 64 units each
+        # Last layer is initialized by zeros making training more stable
+        param_map = nf.nets.MLP([1, 64, 2], init_zeros=True)
+        # Add flow layer
+        flows.append(nf.flows.AffineCouplingBlock(param_map))
+        # Swap dimensions
+        flows.append(nf.flows.Permute(2, mode="swap"))
+
+        for j in range(num_flow_blocks):
+            flows.append(
+                nf.flows.GlowBlock(
+                    channels * 2 ** (num_flow_layers + 1 - i),
+                    hidden_channels,
+                    split_mode=split_mode,
+                    scale=scale,
+                )
+            )
+
+        flows.append(nf.flows.Squeeze())
+
+    # 03: Define the final normalizing flow model
+    encoder = NonparametricClusteredCausalEncoder(
+        graph,
+        cluster_sizes=cluster_sizes,
+        intervention_targets_per_distr=intervention_targets_per_distr,
+        hard_interventions_per_distr=hard_interventions_per_distr,
+        fix_mechanisms=fix_mechanisms,
+        flows=flows,
+        q0=q0,
+    )
+
+    # 04a: Define now the full pytorch lightning model
+    model = NeuralClusteredASCMFlow(
+        encoder=encoder,
+        cluster_sizes=generate_list(784 * 3, 3),
+        graph=adjacency_matrix,
         lr=lr,
         lr_scheduler=lr_scheduler,
         lr_min=lr_min,
-        fix_mechanisms=fix_mechanisms,
     )
+
+    # 04b: Define the trainer for the model
     checkpoint_root_dir = f"{graph_type}-seed={seed}"
-    checkpoint_dir = Path(checkpoint_root_dir) / f"seed-{seed}_{graph_type}"
+    checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
     logger = None
     wandb = False
     check_val_every_n_epoch = 1
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
-        save_top_k=3,
+        save_top_k=5,
         monitor="train_loss",
         every_n_epochs=check_val_every_n_epoch,
     )
@@ -184,6 +240,8 @@ if __name__ == "__main__":
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator=accelerator,
     )
+
+    # 05: Fit the model and save the data
     trainer.fit(
         model,
         datamodule=data_module,
@@ -191,29 +249,3 @@ if __name__ == "__main__":
 
     # save the final model
     torch.save(model, checkpoint_dir / "model.pt")
-    # print(f"Checkpoint dir: {checkpoint_dir}")
-    # trainer.test(datamodule=data_module)
-
-    # # save the output
-    # # x, v, u, e, int_target, log_prob_gt = data_module.test_dataset[:]
-    # print(x.shape)
-    # print(e.shape)
-
-    # # Step 1: Obtain learned representations, which are "predictions
-    # vhat = model.forward(x)
-    # corr_arr_v_vhat = np.zeros((latent_dim, latent_dim))
-    # for idx in range(latent_dim):
-    #     for jdx in range(latent_dim):
-    #         corr_arr_v_vhat[jdx, idx] = mean_correlation_coefficient(vhat[:, (idx,)], v[:, (jdx,)])
-    # print("Saving file to: ", fname)
-    # np.savez_compressed(
-    #     fname,
-    #     x=x.detach().numpy(),
-    #     v=v.detach().numpy(),
-    #     u=u.detach().numpy(),
-    #     e=e.detach().numpy(),
-    #     int_target=int_target.detach().numpy(),
-    #     log_prob_gt=log_prob_gt.detach().numpy(),
-    #     vhat=vhat.detach().numpy(),
-    #     corr_arr_v_vhat=corr_arr_v_vhat,
-    # )

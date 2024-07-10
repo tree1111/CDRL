@@ -9,14 +9,10 @@ from normflows.distributions import DiagGaussian
 from torch import Tensor
 from torch.nn.functional import gaussian_nll_loss
 
-from .utils import (
-    set_initial_noise_parameters,
-    set_initial_edge_coeffs,
-    make_spline_flows,
-)
+from .utils import make_spline_flows, set_initial_edge_coeffs, set_initial_noise_parameters
 
 
-class MultiEnvCausalDistribution(nf.distributions.BaseDistribution, ABC):
+class MultidistrCausalFlow(nf.distributions.BaseDistribution, ABC):
     """
     Base class for parametric multi-environment causal distributions.
 
@@ -30,16 +26,16 @@ class MultiEnvCausalDistribution(nf.distributions.BaseDistribution, ABC):
 
     Methods
     -------
-    multi_env_log_prob(z, e, intervention_targets) -> Tensor
+    log_prob(z, e, intervention_targets) -> Tensor
         Compute the log probability of the latent variables v in environment e, given the intervention targets.
         This is used as the main training objective.
     """
 
-    def multi_env_log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
+    def log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         raise NotImplementedError
 
 
-class ClusteredCausalDistribution(MultiEnvCausalDistribution):
+class ClusteredCausalDistribution(MultidistrCausalFlow):
     def __init__(
         self,
         adjacency_matrix: np.ndarray,
@@ -149,9 +145,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         self.noise_means_requires_grad = noise_means_requires_grad
         self.noise_stds_requires_grad = noise_stds_requires_grad
 
-    def multi_env_log_prob(
-        self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor
-    ) -> Tensor:
+    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Multi-environment log probability of the latent variables.
 
         Parameters
@@ -222,7 +216,7 @@ class ClusteredCausalDistribution(MultiEnvCausalDistribution):
         return log_p
 
 
-class NaiveMultiEnvCausalDistribution(MultiEnvCausalDistribution):
+class NaiveMultiEnvCausalDistribution(MultidistrCausalFlow):
     """
     Naive multi-environment causal distribution.
 
@@ -240,7 +234,7 @@ class NaiveMultiEnvCausalDistribution(MultiEnvCausalDistribution):
 
         self.q0 = DiagGaussian(adjacency_matrix.shape[0], trainable=True)
 
-    def multi_env_log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
+    def log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         return self.q0.log_prob(z)
 
 
@@ -253,7 +247,7 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
     exogenous noise in the SCM.
     """
 
-    def multi_env_log_prob(self, x: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
+    def log_prob(self, x: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         # compute the log-likelihood over the non-intervened targets for each sample
         gaussian_nll = gaussian_nll_loss(
             x, torch.zeros_like(x), torch.ones_like(x), full=True, reduction="none"
@@ -333,9 +327,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
 
         super().__init__(q0, flows)
 
-    def multi_env_log_prob(
-        self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor
-    ) -> Tensor:
+    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Log probability of the latent variables.
 
         This method computes the log probability of the latent variables given the
@@ -370,7 +362,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         log_q, u = self._determinant_terms(representation_intervention_targets, v_latent)
 
         # compute the log probability over 'u' for the non-intervened targets
-        prob_terms = self.q0.multi_env_log_prob(u, e, representation_intervention_targets)
+        prob_terms = self.q0.log_prob(u, e, representation_intervention_targets)
 
         # compute the log probability over 'v_latent' for the intervened targets
         prob_terms_intervened = self._prob_terms_intervened(

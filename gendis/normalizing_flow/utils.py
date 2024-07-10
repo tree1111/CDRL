@@ -1,6 +1,5 @@
-import normflows as nf
-
 import networkx as nx
+import normflows as nf
 import torch
 import torch.nn as nn
 from torch import Tensor

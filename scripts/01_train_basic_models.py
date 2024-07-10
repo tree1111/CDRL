@@ -1,6 +1,7 @@
-from imodelsx import submit_utils
-from os.path import dirname, join
 import os.path
+from os.path import dirname, join
+
+from imodelsx import submit_utils
 
 repo_dir = dirname(dirname(os.path.abspath(__file__)))
 

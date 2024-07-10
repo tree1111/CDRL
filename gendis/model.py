@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import Optional, List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -9,12 +9,16 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 
-from .metrics import mean_correlation_coefficient
 from .encoder import (
     ClusteredCausalEncoder,
-    NaiveClusteredCausalEncoder,
     NonparametricClusteredCausalEncoder,
     ParametricClusteredCausalEncoder,
+)
+from .metrics import mean_correlation_coefficient
+from .normalizing_flow.distribution import (
+    ClusteredCausalDistribution,
+    NaiveMultiEnvCausalDistribution,
+    NonparametricClusteredCausalDistribution,
 )
 
 
@@ -34,10 +38,10 @@ def misspecify_adjacency(graph: np.ndarray):
         return graph.T
 
 
-class BaseNeuralClusteredASCMFlow(pl.LightningModule):
-    """A Neural Clustered Augmented SCM Flow Model.
+class NeuralClusteredASCMFlow(pl.LightningModule):
+    """Neural Clustered Augmented SCM Flow Model.
 
-    Base class for Neural augmented structural causal models (NASCM-Flow). It implements the
+    Main class for Neural augmented structural causal models (NASCM-Flow). It implements the
     training loop and the evaluation metrics.
 
     The model is an encoder-decoder model where the encoding and decoding uses flows as the
@@ -87,6 +91,7 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
 
     def __init__(
         self,
+        encoder: ClusteredCausalEncoder,
         graph: np.ndarray,
         cluster_sizes: List[int] = None,
         lr: float = 1e-2,
@@ -97,6 +102,7 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
         super().__init__()
         self.cluster_sizes = cluster_sizes
         self.graph = graph
+        self.encoder = encoder
 
         self.lr = lr
         self.weight_decay = weight_decay
@@ -144,7 +150,7 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
+        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
         loss = -log_prob.mean()
 
         self.log(f"train_loss", loss, prog_bar=False)
@@ -191,7 +197,7 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
+        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
 
         v_hat = self(x)
         print(
@@ -239,7 +245,7 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.multi_env_log_prob(x, distr_indicators, intervention_targets)
+        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
 
         return {
             "log_prob": log_prob,
@@ -302,10 +308,10 @@ class BaseNeuralClusteredASCMFlow(pl.LightningModule):
                     list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
 
 
-class NonlinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
+class NonlinearNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
     """Nonlinear Neural Clustered Augmented SCM Flow Model.
 
-    Class for nonlinear Neural augmented structural causal models (NASCM-Flow). It implements the
+    Specific class for nonlinear Neural augmented structural causal models (NASCM-Flow). It implements the
     training loop and the evaluation metrics.
 
     The model is an encoder-decoder model where the encoding and decoding uses flows as the
@@ -361,18 +367,12 @@ class NonlinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
         n_flows: int = 1,
         n_hidden_dim: int = 128,
         n_layers: int = 3,
+        flows=None,
+        merges=None,
     ) -> None:
-        super().__init__(
-            graph=graph,
+        q0 = NonparametricClusteredCausalDistribution(
+            adjacency_matrix=graph,
             cluster_sizes=cluster_sizes,
-            lr=lr,
-            weight_decay=weight_decay,
-            lr_scheduler=lr_scheduler,
-            lr_min=lr_min,
-        )
-        self.encoder = NonparametricClusteredCausalEncoder(
-            self.graph,
-            cluster_sizes=self.cluster_sizes,
             intervention_targets_per_distr=intervention_targets_per_distr,
             hard_interventions_per_distr=hard_interventions_per_distr,
             fix_mechanisms=fix_mechanisms,
@@ -380,13 +380,32 @@ class NonlinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
             n_hidden_dim=n_hidden_dim,
             n_layers=n_layers,
         )
-        self.save_hyperparameters()
+        encoder = NonparametricClusteredCausalEncoder(
+            q0=q0,
+            graph=graph,
+            cluster_sizes=self.cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
+            fix_mechanisms=fix_mechanisms,
+            n_flows=n_flows,
+            n_hidden_dim=n_hidden_dim,
+            n_layers=n_layers,
+            flows=flows,
+            merges=merges,
+        )
+        super().__init__(
+            encoder=encoder,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
+            lr=lr,
+            weight_decay=weight_decay,
+            lr_scheduler=lr_scheduler,
+            lr_min=lr_min,
+        )
 
 
-class LinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
-    """
-    CauCA model with linear unmixing function.
-    """
+class LinearNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
+    """Causal ASCM flow model with linear unmixing function."""
 
     def __init__(
         self,
@@ -400,7 +419,24 @@ class LinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
     ) -> None:
+        q0 = ClusteredCausalDistribution(
+            adjacency_matrix=graph,
+            cluster_sizes=cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
+            fix_mechanisms=fix_mechanisms,
+            use_matrix=False,
+        )
+        encoder = ParametricClusteredCausalEncoder(
+            q0=q0,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
+            intervention_targets_per_distr=intervention_targets_per_distr,
+            hard_interventions_per_distr=hard_interventions_per_distr,
+            fix_mechanisms=fix_mechanisms,
+        )
         super().__init__(
+            encoder=encoder,
             graph=graph,
             cluster_sizes=cluster_sizes,
             lr=lr,
@@ -408,20 +444,10 @@ class LinearNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
             lr_scheduler=lr_scheduler,
             lr_min=lr_min,
         )
-        self.encoder = ParametricClusteredCausalEncoder(
-            self.graph,
-            cluster_sizes=cluster_sizes,
-            intervention_targets_per_distr=intervention_targets_per_distr,
-            hard_interventions_per_distr=hard_interventions_per_distr,
-            fix_mechanisms=fix_mechanisms,
-        )
-        self.save_hyperparameters()
 
 
-class NaiveNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
-    """
-    Naive CauCA model with nonlinear unmixing function. It assumes no causal dependencies.
-    """
+class NaiveNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):
+    """Naive CauCA model with nonlinear unmixing function, but no causal dependencies."""
 
     def __init__(
         self,
@@ -438,18 +464,13 @@ class NaiveNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
         n_hidden_dim: int = 128,
         n_layers: int = 3,
     ) -> None:
-        super().__init__(
+        q0 = NaiveMultiEnvCausalDistribution(
+            adjacency_matrix=graph,
+        )
+        encoder = NonparametricClusteredCausalEncoder(
+            q0=q0,
             graph=graph,
             cluster_sizes=cluster_sizes,
-            lr=lr,
-            weight_decay=weight_decay,
-            lr_scheduler=lr_scheduler,
-            lr_min=lr_min,
-        )
-
-        self.encoder = NaiveClusteredCausalEncoder(
-            self.graph,
-            self.cluster_sizes,
             intervention_targets_per_distr=intervention_targets_per_distr,
             hard_interventions_per_distr=hard_interventions_per_distr,
             fix_mechanisms=fix_mechanisms,
@@ -457,4 +478,13 @@ class NaiveNeuralClusteredASCMFlow(BaseNeuralClusteredASCMFlow):
             n_hidden_dim=n_hidden_dim,
             n_layers=n_layers,
         )
-        self.save_hyperparameters()
+
+        super().__init__(
+            encoder=encoder,
+            graph=graph,
+            cluster_sizes=cluster_sizes,
+            lr=lr,
+            weight_decay=weight_decay,
+            lr_scheduler=lr_scheduler,
+            lr_min=lr_min,
+        )

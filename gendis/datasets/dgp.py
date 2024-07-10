@@ -5,7 +5,7 @@ from torch import Tensor
 from .graph_sampler import sample_random_dag
 from .mixing_function import LinearMixing, MixingFunction, NonlinearMixing
 from .noise_generator import GaussianNoise, MultiEnvNoise
-from .scm import LinearSCM, MultiEnvLatentSCM, LocationScaleSCM
+from .scm import LinearSCM, LocationScaleSCM, MultiEnvLatentSCM
 
 
 class MultiEnvDGP:

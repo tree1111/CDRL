@@ -1,12 +1,9 @@
-import pytest
 import networkx as nx
+import pytest
 import torch
 from torch.nn import ParameterList
 
-from gendis.normalizing_flow.utils import (
-    set_initial_edge_coeffs,
-    set_initial_noise_parameters,
-)
+from gendis.normalizing_flow.utils import set_initial_edge_coeffs, set_initial_noise_parameters
 
 
 def test_set_initial_edge_coeffs_basic():

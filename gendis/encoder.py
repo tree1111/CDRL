@@ -1,17 +1,14 @@
-from typing import Optional, List
+from typing import List, Optional
+
 import networkx as nx
-from networkx import DiGraph
 import normflows as nf
 import numpy as np
 import torch
 import torch.nn as nn
-from torch import abs, det, log, Tensor
+from networkx import DiGraph
+from torch import Tensor, abs, det, log
 
-from .normalizing_flow.distribution import (
-    NaiveMultiEnvCausalDistribution,
-    ClusteredCausalDistribution,
-    NonparametricClusteredCausalDistribution,
-)
+from .normalizing_flow.distribution import MultidistrCausalFlow, NaiveMultiEnvCausalDistribution
 from .normalizing_flow.utils import make_spline_flows
 
 
@@ -46,6 +43,10 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
         all parents are removed).
     fix_mechanisms : bool, optional
         Whether to fix the mechanisms, by default False.
+    flows : List, optional
+        List of normalizing flows, by default None.
+    merges : List, optional
+        List of merge/split operations (forward pass must do merge).
 
     Attributes
     ----------
@@ -72,23 +73,31 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
         Maps from the observed data ``X`` to the latent space :math:`\hat{V}`.
     """
 
+    q0: MultidistrCausalFlow
+
     def __init__(
         self,
-        q0: nf.NormalizingFlow,
+        q0: MultidistrCausalFlow,
         graph: nx.DiGraph,
         cluster_sizes: Optional[Tensor] = None,
         intervention_targets_per_distr: Optional[Tensor] = None,
         hard_interventions_per_distr: Optional[Tensor] = None,
         fix_mechanisms: bool = False,
         flows: List = None,
+        debug: bool = False,
     ) -> None:
         self.graph = graph
         self.cluster_sizes = cluster_sizes
         self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.fix_mechanisms = fix_mechanisms
+        self.debug = debug
 
-        super().__init__(q0=q0, flows=flows if flows is not None else [])
+        super().__init__(
+            q0=q0,
+            flows=flows if flows is not None else [],
+            # merges=merges if merges is not None else [],
+        )
 
     @property
     def latent_dim(self):
@@ -98,9 +107,7 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
             else np.sum(self.cluster_sizes)
         )
 
-    def multi_env_log_prob(
-        self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor
-    ) -> Tensor:
+    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         raise NotImplementedError
 
     def forward(self, x: Tensor) -> Tensor:
@@ -110,26 +117,19 @@ class ClusteredCausalEncoder(nf.NormalizingFlow):
 class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
     def __init__(
         self,
+        q0: MultidistrCausalFlow,
         graph: nx.DiGraph,
         cluster_sizes: Tensor | None = None,
         intervention_targets_per_distr: Tensor | None = None,
         hard_interventions_per_distr: Tensor | None = None,
         fix_mechanisms: bool = False,
         flows: List = None,
-        q0: nf.NormalizingFlow = None,
+        debug: bool = False,
     ) -> None:
         # define the distributions over the latent space of variables
-        if q0 is None:
-            if intervention_targets_per_distr is None:
-                raise RuntimeError(
-                    "intervention_targets_per_distr must be provided for parametric base distribution"
-                )
-            q0 = ClusteredCausalDistribution(
-                adjacency_matrix=graph,
-                cluster_sizes=cluster_sizes,
-                intervention_targets_per_distr=intervention_targets_per_distr,
-                hard_interventions_per_distr=hard_interventions_per_distr,
-                fix_mechanisms=fix_mechanisms,
+        if intervention_targets_per_distr is None:
+            raise RuntimeError(
+                "intervention_targets_per_distr must be provided for parametric base distribution"
             )
 
         super().__init__(
@@ -140,10 +140,11 @@ class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
             hard_interventions_per_distr,
             fix_mechanisms,
             flows,
+            debug=debug,
         )
         self._unmixing = nn.Linear(self.latent_dim, self.latent_dim, bias=False)
 
-    def multi_env_log_prob(
+    def log_prob(
         self, x: Tensor, e: Tensor, intervention_targets: Tensor
     ) -> tuple[Tensor, dict[str, Tensor]]:
         """Log probability of the high-dimensional mixture, X.
@@ -178,14 +179,17 @@ class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
         determinant_terms = log_q
 
         # now compute the log probability of the latent representation
-        prob_terms = self.q0.multi_env_log_prob(v_hat, e, intervention_targets)
+        prob_terms = self.q0.log_prob(v_hat, e, intervention_targets)
         log_q += prob_terms
         res = {
             "log_prob": log_q,
             "determinant_terms": determinant_terms,
             "prob_terms": prob_terms,
         }
-        return log_q, res
+        if self.debug:
+            return log_q, res
+        else:
+            return log_q
 
     def inverse(self, x: Tensor) -> Tensor:
         return self._unmixing(x)
@@ -194,30 +198,19 @@ class ParametricClusteredCausalEncoder(ClusteredCausalEncoder):
 class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
     def __init__(
         self,
+        q0: MultidistrCausalFlow,
         graph: DiGraph,
         cluster_sizes: Tensor | None = None,
         intervention_targets_per_distr: Tensor | None = None,
         hard_interventions_per_distr: Tensor | None = None,
         fix_mechanisms: bool = False,
         flows: List = None,
-        q0: nf.NormalizingFlow = None,
+        merges: List = None,
         n_flows: int = 3,
         n_hidden_dim: int = 128,
         n_layers: int = 3,
+        debug: bool = False,
     ) -> None:
-        # define the distributions over the latent space of variables
-        if q0 is None:
-            q0 = NonparametricClusteredCausalDistribution(
-                adjacency_matrix=graph,
-                cluster_sizes=cluster_sizes,
-                intervention_targets_per_distr=intervention_targets_per_distr,
-                hard_interventions_per_distr=hard_interventions_per_distr,
-                fix_mechanisms=fix_mechanisms,
-                n_flows=n_flows,
-                n_hidden_dim=n_hidden_dim,
-                n_layers=n_layers,
-            )
-
         if flows is None:
             # This is the same as the latent_dim property, but it is not defined yet, so we
             # copy the code here.
@@ -233,10 +226,12 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
             intervention_targets_per_distr,
             hard_interventions_per_distr,
             fix_mechanisms,
-            flows,
+            flows=flows,
+            merges=merges,
+            debug=debug,
         )
 
-    def multi_env_log_prob(
+    def log_prob(
         self, x: Tensor, e: Tensor, intervention_targets: Tensor
     ) -> tuple[Tensor, dict[str, Tensor]]:
         """Log probability of the high-dimensional mixture, X.
@@ -271,14 +266,18 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
 
         # compute the log probability of the final V_hat
         # using the base distribution, which adheres to a latent causal graph
-        prob_terms = self.q0.multi_env_log_prob(v_latent, e, intervention_targets)
+        prob_terms = self.q0.log_prob(v_latent, e, intervention_targets)
         log_q += prob_terms
+
         res = {
             "log_prob": log_q,
             "determinant_terms": determinant_terms,
             "prob_terms": prob_terms,
         }
-        return log_q, res
+        if self.debug:
+            return log_q, res
+        else:
+            return log_q
 
     def forward(self, x: Tensor) -> Tensor:
         return self.inverse(x)
@@ -302,6 +301,7 @@ class NaiveClusteredCausalEncoder(ClusteredCausalEncoder):
         n_flows: List = 3,
         n_hidden_dim: int = 128,
         n_layers: int = 3,
+        debug: bool = False,
     ) -> None:
         # q0
         q0 = NaiveMultiEnvCausalDistribution(
@@ -318,9 +318,10 @@ class NaiveClusteredCausalEncoder(ClusteredCausalEncoder):
             n_hidden_dim=n_hidden_dim,
             n_layers=n_layers,
             q0=q0,
+            debug=debug,
         )
 
-    def multi_env_log_prob(
+    def log_prob(
         self, x: Tensor, e: Tensor, intervention_targets: Tensor
     ) -> tuple[Tensor, dict[str, Tensor]]:
         log_q = torch.zeros(len(x), dtype=x.dtype, device=x.device)
@@ -329,14 +330,18 @@ class NaiveClusteredCausalEncoder(ClusteredCausalEncoder):
             v_latent, log_det = self.flows[i].inverse(v_latent)
             log_q += log_det
         determinant_terms = log_q
-        prob_terms = self.q0.multi_env_log_prob(v_latent, e, intervention_targets)
+        prob_terms = self.q0.log_prob(v_latent, e, intervention_targets)
         log_q += prob_terms
+
         res = {
             "log_prob": log_q,
             "determinant_terms": determinant_terms,
             "prob_terms": prob_terms,
         }
-        return log_q, res
+        if self.debug:
+            return log_q, res
+        else:
+            return log_q
 
     def forward(self, x: Tensor) -> Tensor:
         return self.inverse(x)

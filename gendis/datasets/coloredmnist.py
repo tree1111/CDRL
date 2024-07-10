@@ -1,11 +1,10 @@
 import os
 
 import numpy as np
-from PIL import Image
-
 import torch
-from torchvision import datasets
 import torchvision.datasets.utils as dataset_utils
+from PIL import Image
+from torchvision import datasets
 
 
 def color_grayscale_arr(arr, red=True):

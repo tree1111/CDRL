@@ -1,11 +1,11 @@
 from itertools import permutations
+
 import numpy as np
 import torch
-from torch import Tensor
-from torchmetrics import SpearmanCorrCoef, PearsonCorrCoef
-
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+from torch import Tensor
+from torchmetrics import PearsonCorrCoef, SpearmanCorrCoef
 
 
 def learned_vs_latents(v_hat: Tensor, v: Tensor, method="pearson"):
