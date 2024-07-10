@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 from torch.optim import Optimizer
 
+from .base import CausalMultiscaleFlow
 from .encoder import (
     ClusteredCausalEncoder,
     NonparametricClusteredCausalEncoder,
@@ -87,11 +88,12 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         for more details.
     """
 
-    encoder: ClusteredCausalEncoder  # set in subclasses
+    encoder: CausalMultiscaleFlow  # set in subclasses
 
     def __init__(
         self,
-        encoder: ClusteredCausalEncoder,
+        encoder,
+        num_distrs: int,
         graph: np.ndarray,
         cluster_sizes: List[int] = None,
         lr: float = 1e-2,
@@ -103,6 +105,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         self.cluster_sizes = cluster_sizes
         self.graph = graph
         self.encoder = encoder
+        self.num_distrs = num_distrs
 
         self.lr = lr
         self.weight_decay = weight_decay
@@ -110,10 +113,6 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         self.lr_min = lr_min
 
         self.save_hyperparameters()
-
-    @property
-    def latent_dim(self):
-        return np.sum(self.cluster_sizes) if self.cluster_sizes is not None else self.graph.shape[0]
 
     def training_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> Tensor:
         """Apply training step over batch of data.
@@ -150,7 +149,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
+        log_prob = self.encoder.log_prob(
+            x, y=None, env=distr_indicators, intervention_targets=intervention_targets
+        )
         loss = -log_prob.mean()
 
         self.log(f"train_loss", loss, prog_bar=False)
@@ -197,7 +198,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
+        log_prob = self.encoder.log_prob(
+            x, y=None, env=distr_indicators, intervention_targets=intervention_targets
+        )
 
         v_hat = self(x)
         print(
@@ -245,7 +248,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
             distr_indicators,
             intervention_targets,
         ) = batch
-        log_prob, res = self.encoder.log_prob(x, distr_indicators, intervention_targets)
+        log_prob = self.encoder.log_prob(
+            x, y=None, env=distr_indicators, intervention_targets=intervention_targets
+        )
 
         return {
             "log_prob": log_prob,
@@ -295,17 +300,19 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         return v_hat
 
     def on_before_optimizer_step(self, optimizer: Optimizer, optimizer_idx: int) -> None:
-        num_envs = len(self.encoder.intervention_targets_per_distr)
-        num_vars = self.graph.shape[0]
+        num_envs = len(self.encoder.causalq0.intervention_targets_per_distr)
+
+        # number of variables over the cluster dag
+        num_vars = self.encoder.causalq0.dag.number_of_nodes()
 
         # do not train any parameters that are not supposed to be trained
         # XXX: in this case, we do not update exogenous variable distributions that are fixed
         for param_idx, (distr_idx, idx) in enumerate(product(range(num_envs), range(num_vars))):
-            if hasattr(self.encoder.q0, "noise_means_requires_grad"):
-                if not self.encoder.q0.noise_means_requires_grad[distr_idx][idx]:
-                    list(self.encoder.q0.noise_means.parameters())[param_idx].grad = None
-                if not self.encoder.q0.noise_stds_requires_grad[distr_idx][idx]:
-                    list(self.encoder.q0.noise_stds.parameters())[param_idx].grad = None
+            if hasattr(self.encoder.causalq0, "noise_means_requires_grad"):
+                if not self.encoder.causalq0.noise_means_requires_grad[distr_idx][idx]:
+                    list(self.encoder.causalq0.noise_means.parameters())[param_idx].grad = None
+                if not self.encoder.causalq0.noise_stds_requires_grad[distr_idx][idx]:
+                    list(self.encoder.causalq0.noise_stds.parameters())[param_idx].grad = None
 
 
 class NonlinearNeuralClusteredASCMFlow(NeuralClusteredASCMFlow):

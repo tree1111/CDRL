@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from networkx import DiGraph
+from normflows.core import MultiscaleFlow
 from torch import Tensor, abs, det, log
 
 from .normalizing_flow.distribution import MultidistrCausalFlow, NaiveMultiEnvCausalDistribution
@@ -228,6 +229,8 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
             flows=flows,
             debug=debug,
         )
+
+        self.flatten_layer = nn.Flatten()
 
     def log_prob(
         self, x: Tensor, e: Tensor, intervention_targets: Tensor

@@ -307,6 +307,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         self.n_layers = n_layers
         self.n_hidden_dim = n_hidden_dim
 
+        self.dag = nx.DiGraph(adjacency_matrix)
         self.latent_dim = (
             self.dag.number_of_nodes() if self.cluster_sizes is None else np.sum(self.cluster_sizes)
         )
