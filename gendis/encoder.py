@@ -205,7 +205,6 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
         hard_interventions_per_distr: Tensor | None = None,
         fix_mechanisms: bool = False,
         flows: List = None,
-        merges: List = None,
         n_flows: int = 3,
         n_hidden_dim: int = 128,
         n_layers: int = 3,
@@ -227,7 +226,6 @@ class NonparametricClusteredCausalEncoder(ClusteredCausalEncoder):
             hard_interventions_per_distr,
             fix_mechanisms,
             flows=flows,
-            merges=merges,
             debug=debug,
         )
 
