@@ -34,7 +34,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  nohup $CMD > output_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
+  nohup $CMD > output_glow_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
   echo $GPU_INDEX
   echo "Submitted job for training seed: $TRAINING_SEED for script: $SCRIPT_NAME"
