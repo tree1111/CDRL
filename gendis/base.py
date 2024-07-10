@@ -112,7 +112,7 @@ class CausalMultiscaleFlow(nn.Module):
         return log_q
 
     def inverse_and_log_det(self, x):
-        """Get latent variable z from observed variable x
+        """Get latent variable z from observed variable x (image input)
 
         Args:
             x: Observed variable
@@ -138,6 +138,8 @@ class CausalMultiscaleFlow(nn.Module):
         # apply flatten layer
         z = torch.cat([self.flatten_layer(z_) for z_ in z], dim=1)
 
+        # optionally "invert" the causal distribution
+
         return z, log_det
 
     def save(self, path):
@@ -155,3 +157,59 @@ class CausalMultiscaleFlow(nn.Module):
           path: Path including filename where to load model from
         """
         self.load_state_dict(torch.load(path))
+
+    def sample(self, num_samples=1, y=None, temperature=None):
+        """Samples from flow-based approximate distribution
+
+        Args:
+          num_samples: Number of samples to draw
+          y: Classes to sample from, will be sampled uniformly if None
+          temperature: Temperature parameter for temp annealed sampling
+
+        Returns:
+          Samples, log probability
+        """
+        if temperature is not None:
+            self.set_temperature(temperature)
+        for i in range(len(self.q0)):
+            # if self.class_cond:
+            #     z_, log_q_ = self.q0[i](num_samples, y)
+            # else:
+            z_, log_q_ = self.causalq0(num_samples)
+            if i == 0:
+                log_q = log_q_
+                z = z_
+            else:
+                log_q += log_q_
+                z, log_det = self.merges[i - 1]([z, z_])
+                log_q -= log_det
+            for flow in self.flows[i]:
+                z, log_det = flow(z)
+                log_q -= log_det
+        if self.transform is not None:
+            z, log_det = self.transform(z)
+            log_q -= log_det
+        if temperature is not None:
+            self.reset_temperature()
+        return z, log_q
+    
+    def set_temperature(self, temperature):
+        """Set temperature for temperature a annealed sampling
+
+        Args:
+          temperature: Temperature parameter
+        """
+        for q0 in self.q0:
+            if hasattr(q0, "temperature"):
+                q0.temperature = temperature
+            else:
+                raise NotImplementedError(
+                    "One base function does not "
+                    "support temperature annealed sampling"
+                )
+
+    def reset_temperature(self):
+        """
+        Set temperature values of base distributions back to None
+        """
+        self.set_temperature(None)
