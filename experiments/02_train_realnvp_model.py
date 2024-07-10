@@ -10,7 +10,7 @@ import torch
 import torchvision
 
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.encoder import CausalMultiscaleFlow, NonparametricClusteredCausalEncoder
+from gendis.encoder import CausalMultiscaleFlow
 from gendis.model import NeuralClusteredASCMFlow
 from gendis.normalizing_flow.distribution import NonparametricClusteredCausalDistribution
 
