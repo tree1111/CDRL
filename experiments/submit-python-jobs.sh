@@ -24,7 +24,7 @@ do
   TRAINING_SEED=${training_seeds[$i]}
   
   # Calculate the GPU index to use for this job
-  GPU_INDEX=$(((i % $NUM_GPUS) + 1))
+  GPU_INDEX=$((({TRAINING_SEED[$i]} % $NUM_GPUS) + 1))
 
   # Set the environment variable for the GPU
   export CUDA_VISIBLE_DEVICES=$GPU_INDEX
