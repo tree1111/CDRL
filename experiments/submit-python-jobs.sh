@@ -7,7 +7,7 @@ SCRIPT_NAME="02_train_realnvp_model.py"
 LOG_DIR="/home/adam2392/projects/logs/"
 
 # Number of GPUs available
-NUM_GPUS=7
+NUM_GPUS=8
 
 # Change to the directory containing the script
 # cd "$SCRIPT_DIR"
@@ -25,7 +25,7 @@ do
   
   # Calculate the GPU index to use for this job
   # GPU_INDEX=$(((({TRAINING_SEED[$i]}) % $NUM_GPUS) + 1))
-  GPU_INDEX=$(((TRAINING_SEED % $NUM_GPUS) + 1))
+  GPU_INDEX=$(((TRAINING_SEED)))
 
   # Set the environment variable for the GPU
   export CUDA_VISIBLE_DEVICES=$GPU_INDEX
@@ -37,6 +37,7 @@ do
   # or `&` to run the command in the background
   nohup $CMD > output_glow_max5k_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
+  echo $TRAINING_SEED
   echo $GPU_INDEX
   echo "Submitted job for training seed: $TRAINING_SEED for script: $SCRIPT_NAME"
 done
