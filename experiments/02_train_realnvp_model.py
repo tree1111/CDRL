@@ -245,7 +245,6 @@ if __name__ == "__main__":
         every_n_epochs=check_val_every_n_epoch,
     )
 
-    max_epochs = 2
     # Train the model
     trainer = pl.Trainer(
         max_epochs=max_epochs,
