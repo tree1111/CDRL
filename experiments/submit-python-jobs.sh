@@ -28,7 +28,7 @@ do
   GPU_INDEX=$(((TRAINING_SEED - 1)))
 
   # Set the environment variable for the GPU
-  export CUDA_VISIBLE_DEVICES="[$GPU_INDEX, $((GPU_INDEX + 1))]"
+  export CUDA_VISIBLE_DEVICES=[$GPU_INDEX, $((GPU_INDEX + 1))]
 
   # Construct the command to run the Python script with the current training seed
   CMD="python3 $SCRIPT_NAME --seed $TRAINING_SEED --log_dir $LOG_DIR"

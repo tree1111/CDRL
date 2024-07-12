@@ -81,7 +81,7 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     log_dir = args.log_dir
 
-    devices = 2
+    devices = 1
     n_jobs = 1
     num_workers = 10
     print("Running with n_jobs:", n_jobs)
