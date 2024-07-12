@@ -44,7 +44,7 @@ def add_main_args(parser):
     # training misc args
     parser.add_argument("--root_dir", type=str, default="./", help="Root directory")
     parser.add_argument("--seed", type=int, default=1234, help="random seed")
-    parser.add_argument("--max_epochs", type=int, default=5_000, help="Max epochs")
+    parser.add_argument("--max_epochs", type=int, default=10_000, help="Max epochs")
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = None
     lr_min = 0.0
-    lr = 1e-6
+    lr = 1e-5
 
     # Define the model
     net_hidden_dim = 128
@@ -178,6 +178,8 @@ if __name__ == "__main__":
         hard_interventions_per_distr=hard_interventions_per_distr,
         fix_mechanisms=fix_mechanisms,
     )
+
+    noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3 - 3,))
 
     input_shape = (3, 28, 28)
     channels = 3
@@ -221,7 +223,7 @@ if __name__ == "__main__":
 
     # 03: Define the final normalizing flow model
     # Construct flow model with the multiscale architecture
-    encoder = CausalMultiscaleFlow(causalq0, flows, merges)
+    encoder = CausalMultiscaleFlow(causalq0, flows, merges, noiseq0=noiseq0)
 
     # 04a: Define now the full pytorch lightning model
     model = NeuralClusteredASCMFlow(
