@@ -1,3 +1,5 @@
+# Training of a RealNVP model on the MNIST dataset with independent high-dimensional factors
+# as the independent noise variables, which do not change with respect to each dataset.
 import argparse
 import logging
 import random
@@ -75,8 +77,6 @@ if __name__ == "__main__":
     results_dir.mkdir(exist_ok=True, parents=True)
 
     root = "/home/adam2392/projects/data/"
-    # root = '/Users/adam2392/pytorch_data/'
-    # accelerator = 'cpu'
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -146,9 +146,9 @@ if __name__ == "__main__":
     data_module.setup()
 
     n_flows = 3  # number of flows to use in nonlinear ICA model
-    lr_scheduler = "cosine"
+    lr_scheduler = None
     lr_min = 0.0
-    lr = 1e-3
+    lr = 1e-6
 
     # Define the model
     net_hidden_dim = 128
@@ -245,7 +245,6 @@ if __name__ == "__main__":
         every_n_epochs=check_val_every_n_epoch,
     )
 
-    max_epochs = 2
     # Train the model
     trainer = pl.Trainer(
         max_epochs=max_epochs,
@@ -263,4 +262,4 @@ if __name__ == "__main__":
     )
 
     # save the final model
-    # torch.save(model, checkpoint_dir / "model.pt")
+    torch.save(model, checkpoint_dir / "model.pt")
