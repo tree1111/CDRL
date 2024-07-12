@@ -3,12 +3,14 @@ import torch
 import torch.nn as nn
 
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
+from normflows.distributions import BaseDistribution
 
 
 class CausalMultiscaleFlow(nn.Module):
     causalq0: ClusteredCausalDistribution
+    noiseq0: BaseDistribution
 
-    def __init__(self, causalq0, flows, merges, transform=None, class_cond=True):
+    def __init__(self, causalq0, flows, merges, transform=None, noiseq0=None, class_cond=True):
         """A causal multiscale flow based model.
 
         This differs from a standard multiscale flow model in that the base distribution is a causal
@@ -23,6 +25,7 @@ class CausalMultiscaleFlow(nn.Module):
           flows: List of list of flows for each level
           merges: List of merge/split operations (forward pass must do merge)
           transform: Initial transformation of inputs
+          noiseq0: (Optional) Noise distribution for latent factors
           class_cond: Flag, indicated whether model has class conditional
         base distributions
         """
@@ -40,6 +43,7 @@ class CausalMultiscaleFlow(nn.Module):
         self.transform = transform
         self.class_cond = class_cond
         self.causalq0 = causalq0
+        self.noiseq0 = noiseq0
         self.flatten_layer = nn.Flatten()
 
     def forward(self, x, y=None, reverse=False, inds=None, levels=None):
@@ -82,7 +86,7 @@ class CausalMultiscaleFlow(nn.Module):
                 [z, z_], log_det = self.merges[i - 1].inverse(z)
                 log_q += log_det
 
-                # flatten the latent factors
+                # flatten the latent factors that are merged out
                 z_ = self.flatten_layer(z_)
                 n_dims = z_.shape[1]
                 v_latent[:, prev_n_dims : n_dims + prev_n_dims] = z_
@@ -104,6 +108,12 @@ class CausalMultiscaleFlow(nn.Module):
                 (x.shape[0], n_cluster_dims), device=x.device, dtype=x.dtype
             )
             env = torch.zeros((x.shape[0], 0), device=x.device, dtype=x.dtype)
+
+        if self.noiseq0 is not None:
+            log_q += self.noiseq0.log_prob(v_latent[:, : self.noiseq0.n_dim])
+
+            # use the rest of the dimensions to fit the causal model
+            v_latent = v_latent[:, self.noiseq0.n_dim :]
 
         # compute the log-probability of the final V_hat over the causal distribution
         log_q += self.causalq0.log_prob(v_latent, env, intervention_targets, hard_interventions)
@@ -156,7 +166,9 @@ class CausalMultiscaleFlow(nn.Module):
         """
         self.load_state_dict(torch.load(path))
 
-    def sample(self, num_samples=1, intervention_targets=None, hard_interventions=None, temperature=None):
+    def sample(
+        self, num_samples=1, intervention_targets=None, hard_interventions=None, temperature=None
+    ):
         """Samples from flow-based approximate distribution
 
         Args:
@@ -170,7 +182,7 @@ class CausalMultiscaleFlow(nn.Module):
         """
         if temperature is not None:
             self.set_temperature(temperature)
-        
+
         # first sample from the causal distribution
         z_, log_q_ = self.causalq0(num_samples)
 

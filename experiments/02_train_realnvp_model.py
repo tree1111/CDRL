@@ -148,7 +148,7 @@ if __name__ == "__main__":
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
     lr_min = 0.0
-    lr = 1e-4
+    lr = 5e-5
 
     # Define the model
     net_hidden_dim = 128

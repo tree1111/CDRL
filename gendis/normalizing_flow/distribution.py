@@ -216,7 +216,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             ).log_prob(samples[:, parents_rep_idx])
         return samples, log_p
 
-    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor, hard_interventions: Tensor=None) -> Tensor:
+    def log_prob(
+        self,
+        v_latent: Tensor,
+        e: Tensor,
+        intervention_targets: Tensor,
+        hard_interventions: Tensor = None,
+    ) -> Tensor:
         """Multi-environment log probability of the latent variables.
 
         Parameters
@@ -258,13 +264,14 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # compute the contribution of the parents
                 if len(parents) == 0 or (
-                    intervention_targets_env[0, idx] == 1
-                    and hard_interventions_env[0, idx] == 1
+                    intervention_targets_env[0, idx] == 1 and hard_interventions_env[0, idx] == 1
                 ):
                     parent_contribution = 0.0
                     var = self.noise_stds[noise_env_idx][idx] ** 2
                 else:
-                    parent_cluster_idx = np.hstack([np.arange(*self.cluster_mapping[p], dtype=int) for p in parents])
+                    parent_cluster_idx = np.hstack(
+                        [np.arange(*self.cluster_mapping[p], dtype=int) for p in parents]
+                    )
 
                     # get coeffieicnts for the parents
                     # which is a vector of coefficients for each parent
@@ -288,9 +295,11 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # compute the log probability of the variable given the
                 # parametrized normal distribution using the parents mean and variance
-                log_p_distr = torch.distributions.Normal(
-                    parent_contribution + noise_contribution, var.sqrt()
-                ).log_prob(v_env[:, cluster_idx]).sum(axis=1)
+                log_p_distr = (
+                    torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
+                    .log_prob(v_env[:, cluster_idx])
+                    .sum(axis=1)
+                )
 
                 log_p[env_mask] += log_p_distr
 
@@ -336,17 +345,17 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
         mask = ~intervention_targets.to(bool)
         log_p = -(mask * gaussian_nll).sum(dim=1)
         return log_p
-    
-    def forward(self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None):
+
+    def forward(
+        self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
+    ):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         samples = torch.zeros((num_samples, self.latent_dim), device=device)
 
         # 1. for intervened targets, what do we do?
         # 2. for hard interventions, what do we do?
 
-        eps = torch.randn(
-            (num_samples, self.latent_dim), device=device
-        )
+        eps = torch.randn((num_samples, self.latent_dim), device=device)
         log_scale = nn.Parameter(torch.zeros(1, *self.shape))
         # if self.temperature is None:
         #     log_scale = self.log_scale
@@ -357,7 +366,6 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
             log_scale + 0.5 * torch.pow(eps, 2), list(range(1, self.latent_dim + 1))
         )
         return z, log_p
-
 
 
 class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
@@ -430,7 +438,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         q0: MultiEnvBaseDistribution = MultiEnvBaseDistribution()
 
         super().__init__(q0, flows)
-    
+
     def forward(
         self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
     ):
@@ -443,8 +451,6 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         samples = self.q0.sample(num_samples, intervention_targets)
 
         # then we will map the samples to the latent variables
-
-    
 
     def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Log probability of the latent variables.
