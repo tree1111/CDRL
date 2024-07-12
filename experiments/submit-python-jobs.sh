@@ -28,14 +28,14 @@ do
   GPU_INDEX=$(((TRAINING_SEED - 1)))
 
   # Set the environment variable for the GPU
-  export CUDA_VISIBLE_DEVICES=[$GPU_INDEX, $((GPU_INDEX + 1))]
+  export CUDA_VISIBLE_DEVICES=$GPU_INDEX,$((GPU_INDEX + 1))
 
   # Construct the command to run the Python script with the current training seed
   CMD="python3 $SCRIPT_NAME --seed $TRAINING_SEED --log_dir $LOG_DIR"
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  nohup $CMD > output_glow_max5k_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
+  # nohup $CMD > output_glow_max5k_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
   echo $TRAINING_SEED
   echo "GPU index is $CUDA_VISIBLE_DEVICES"
