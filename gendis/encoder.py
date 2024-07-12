@@ -106,7 +106,7 @@ class CausalMultiscaleFlow(nn.Module):
             env = torch.zeros((x.shape[0], 0), device=x.device, dtype=x.dtype)
 
         # compute the log-probability of the final V_hat over the causal distribution
-        log_q += self.causalq0.log_prob(v_latent, env, intervention_targets)
+        log_q += self.causalq0.log_prob(v_latent, env, intervention_targets, hard_interventions)
         return log_q
 
     def inverse_and_log_det(self, x):
@@ -156,24 +156,28 @@ class CausalMultiscaleFlow(nn.Module):
         """
         self.load_state_dict(torch.load(path))
 
-    def sample(self, num_samples=1, y=None, temperature=None):
+    def sample(self, num_samples=1, intervention_targets=None, hard_interventions=None, temperature=None):
         """Samples from flow-based approximate distribution
 
         Args:
-          num_samples: Number of samples to draw
-          y: Classes to sample from, will be sampled uniformly if None
-          temperature: Temperature parameter for temp annealed sampling
+            num_samples: Number of samples to draw
+            intervention_targets: Intervention targets for causal distribution
+            hard_interventions: Hard interventions for causal distribution
+            temperature: Temperature parameter for temp annealed sampling
 
         Returns:
-          Samples, log probability
+            Samples, log probability
         """
         if temperature is not None:
             self.set_temperature(temperature)
-        for i in range(len(self.q0)):
+        
+        # first sample from the causal distribution
+        z_, log_q_ = self.causalq0(num_samples)
+
+        for i in range(self.num_levels):
             # if self.class_cond:
             #     z_, log_q_ = self.q0[i](num_samples, y)
             # else:
-            z_, log_q_ = self.causalq0(num_samples)
             if i == 0:
                 log_q = log_q_
                 z = z_

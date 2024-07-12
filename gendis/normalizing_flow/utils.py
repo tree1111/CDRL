@@ -113,6 +113,11 @@ def set_initial_edge_coeffs(
         coeff_values_i = []
         coeff_values_requires_grad_i = []
         num_parents = len(list(dag.predecessors(idx)))
+        if cluster_mapping is not None:
+            # get start/end in the representation for this cluster
+            start, end = cluster_mapping[idx]
+            cluster_size = int(end - start)
+
         for pa_idx in range(num_parents):
             if cluster_mapping is None:
                 random_val = Uniform(min_val, max_val).sample((1,))
@@ -126,11 +131,11 @@ def set_initial_edge_coeffs(
                         f"{idx}: {len(cluster_mapping[idx])} != {pa_idx}: {len(cluster_mapping[pa_idx])}."
                     )
                 # sample a random invertible matrix
-                matrix = sample_invertible_matrix(len(cluster_mapping[idx]), min_val, max_val)
+                matrix = sample_invertible_matrix(cluster_size, min_val, max_val)
                 param = nn.Parameter(matrix, requires_grad=True).to(device)
             else:
                 # sample a random vector with each value between min_val and max_val
-                vector = (max_val - min_val) * torch.rand((len(cluster_mapping[idx]),)) + min_val
+                vector = (max_val - min_val) * torch.rand((cluster_size,)) + min_val
                 param = nn.Parameter(vector, requires_grad=True).to(device)
 
             coeff_values_i.append(param)
@@ -139,9 +144,7 @@ def set_initial_edge_coeffs(
         if cluster_mapping is None:
             const = torch.ones(1, requires_grad=False).to(device)  # variance param
         else:
-            const = nn.Parameter(torch.ones(len(cluster_mapping[idx])), requires_grad=False).to(
-                device
-            )
+            const = nn.Parameter(torch.ones(cluster_size, requires_grad=False).to(device))
 
         coeff_values_i.append(const)
         coeff_values_requires_grad_i.append(False)

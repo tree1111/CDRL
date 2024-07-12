@@ -12,7 +12,7 @@ import torchvision
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
 from gendis.encoder import CausalMultiscaleFlow
 from gendis.model import NeuralClusteredASCMFlow
-from gendis.normalizing_flow.distribution import NonparametricClusteredCausalDistribution
+from gendis.normalizing_flow.distribution import NonparametricClusteredCausalDistribution, ClusteredCausalDistribution
 
 
 def generate_list(x, n_clusters):
@@ -44,7 +44,7 @@ def add_main_args(parser):
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
 
     # model args
@@ -81,9 +81,9 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     log_dir = args.log_dir
 
-    devices = 1
+    devices = 2
     n_jobs = 1
-    num_workers = 2
+    num_workers = 10
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
@@ -157,15 +157,22 @@ if __name__ == "__main__":
     cluster_sizes = generate_list(784 * 3, 3)
 
     # 01: Define the causal base distribution with the graph
-    causalq0 = NonparametricClusteredCausalDistribution(
+    # causalq0 = NonparametricClusteredCausalDistribution(
+    #     adjacency_matrix=graph,
+    #     cluster_sizes=cluster_sizes,
+    #     intervention_targets_per_distr=intervention_targets_per_distr,
+    #     hard_interventions_per_distr=hard_interventions_per_distr,
+    #     fix_mechanisms=fix_mechanisms,
+    #     n_flows=n_flows,
+    #     n_hidden_dim=net_hidden_dim,
+    #     n_layers=net_hidden_layers,
+    # )
+    causalq0 = ClusteredCausalDistribution(
         adjacency_matrix=graph,
         cluster_sizes=cluster_sizes,
         intervention_targets_per_distr=intervention_targets_per_distr,
         hard_interventions_per_distr=hard_interventions_per_distr,
         fix_mechanisms=fix_mechanisms,
-        n_flows=n_flows,
-        n_hidden_dim=net_hidden_dim,
-        n_layers=net_hidden_layers,
     )
 
     input_shape = (3, 28, 28)
@@ -173,7 +180,7 @@ if __name__ == "__main__":
 
     # Define flows
     L = 2
-    K = 3
+    K = 16
     n_dims = np.prod(input_shape)
     hidden_channels = 256
     split_mode = "channel"

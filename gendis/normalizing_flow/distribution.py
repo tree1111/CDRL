@@ -148,24 +148,75 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.noise_means_requires_grad = noise_means_requires_grad
         self.noise_stds_requires_grad = noise_stds_requires_grad
 
-    def forward(self, num_samples=1, intervention_targets: Tensor = None):
-        # TODO: NEED TO IMPLEMENT THE FORWARD SAMPLING PROCEDURE
+    def forward(
+        self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
+    ):
+        if intervention_targets is not None:
+            if intervention_targets.squeeze().shape[0] != self.dag.number_of_nodes():
+                raise ValueError(
+                    "Intervention targets must have the same length as the number of nodes in the DAG."
+                )
+            if hard_interventions is not None and len(intervention_targets) != len(
+                hard_interventions
+            ):
+                raise ValueError(
+                    "Intervention targets and hard interventions must have the same length."
+                )
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # return (num_samples, latent_dim) samples from the distribution
+        samples = torch.zeros((num_samples, self.latent_dim), device=device)
+
+        # return the log probability of the samples
+        log_p = torch.zeros(1, device=device)
+
+        # start from observational environment
+        noise_env_idx = 0
 
         # sample from the noise distributions for each variable over the DAG
-        samples = []
+        for idx in range(self.dag.number_of_nodes()):
+            parents = list(self.dag.predecessors(idx))
 
-        eps = torch.randn((num_samples,) + self.shape, dtype=self.loc.dtype, device=self.loc.device)
-        if self.temperature is None:
-            log_scale = self.log_scale
-        else:
-            log_scale = self.log_scale + np.log(self.temperature)
-        z = self.loc + torch.exp(log_scale) * eps
-        log_p = -0.5 * self.d * np.log(2 * np.pi) - torch.sum(
-            log_scale + 0.5 * torch.pow(eps, 2), list(range(1, self.n_dim + 1))
-        )
-        return z, log_p
+            # get start/end in the representation for this cluster
+            start, end = self.cluster_mapping[idx]
+            parents_rep_idx = np.arange(start, end, dtype=int)
 
-    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
+            # compute the contribution of the parents
+            if len(parents) == 0 or (
+                intervention_targets[idx] == 1 and hard_interventions[idx] == 1
+            ):
+                parent_contribution = 0.0
+            else:
+                # get coeffieicnts for the parents
+                # which is a vector of coefficients for each parent
+                coeffs_raw = self.coeff_values[idx][:-1]
+                if isinstance(coeffs_raw, nn.ParameterList):
+                    coeffs_raw = torch.cat([c for c in coeffs_raw])
+                parent_coeffs = coeffs_raw.to(device)
+                parent_contribution = parent_coeffs.matmul(samples[:, parents_rep_idx].T)
+
+            # XXX: compute the contributions of the confounders
+
+            # compute the contribution of the noise
+            var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(parents_rep_idx)
+            noise_coeff = self.coeff_values[idx][-1].to(device)
+            noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
+            var *= noise_coeff**2
+
+            # compute the log probability of the variable given the
+            # parametrized normal distribution using the parents mean and variance
+            samples[:, idx] = torch.normal(
+                parent_contribution + noise_contribution, var.sqrt(), size=(num_samples,)
+            )
+            # compute the log probability of the variable given the
+            # parametrized normal distribution using the parents mean and variance
+            log_p += torch.distributions.Normal(
+                parent_contribution + noise_contribution, var.sqrt()
+            ).log_prob(samples[:, parents_rep_idx])
+        return samples, log_p
+
+    def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor, hard_interventions: Tensor=None) -> Tensor:
         """Multi-environment log probability of the latent variables.
 
         Parameters
@@ -185,12 +236,15 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         """
         log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
         latent_dim = v_latent.shape[1]
+        if hard_interventions is None:
+            hard_interventions = torch.zeros_like(intervention_targets)
 
         for env in e.unique():
             env_mask = (e == env).flatten()
 
             v_env = v_latent[env_mask, :]
             intervention_targets_env = intervention_targets[env_mask, :]
+            hard_interventions_env = hard_interventions[env_mask, :]
 
             # iterate over all variables in the latent space in topological order
             for idx in range(self.dag.number_of_nodes()):
@@ -198,40 +252,47 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # get start/end in the representation for this cluster
                 start, end = self.cluster_mapping[idx]
-                len_cluster = end - start
-                parents_rep_idx = np.arange(start, end, dtype=int)
+                cluster_idx = np.arange(start, end, dtype=int)
+
+                noise_env_idx = int(env) if intervention_targets_env[0, idx] == 1 else 0
 
                 # compute the contribution of the parents
                 if len(parents) == 0 or (
                     intervention_targets_env[0, idx] == 1
-                    and self.hard_interventions_per_distr[env_mask, idx] == 1
+                    and hard_interventions_env[0, idx] == 1
                 ):
                     parent_contribution = 0.0
+                    var = self.noise_stds[noise_env_idx][idx] ** 2
                 else:
+                    parent_cluster_idx = np.hstack([np.arange(*self.cluster_mapping[p], dtype=int) for p in parents])
+
                     # get coeffieicnts for the parents
                     # which is a vector of coefficients for each parent
                     coeffs_raw = self.coeff_values[idx][:-1]
                     if isinstance(coeffs_raw, nn.ParameterList):
                         coeffs_raw = torch.cat([c for c in coeffs_raw])
+
                     parent_coeffs = coeffs_raw.to(v_latent.device)
-                    parent_contribution = parent_coeffs.matmul(v_env[:, parents_rep_idx].T)
+                    parent_contribution = parent_coeffs * v_env[:, parent_cluster_idx]
+
+                    # compute the contribution of the noise
+                    var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(
+                        v_env[:, cluster_idx]
+                    )
 
                 # XXX: compute the contributions of the confounders
 
-                # compute the contribution of the noise
-                noise_env_idx = int(env) if intervention_targets_env[0, idx] == 1 else 0
-                var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(
-                    v_env[:, parents_rep_idx]
-                )
                 noise_coeff = self.coeff_values[idx][-1].to(v_latent.device)
                 noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
                 var *= noise_coeff**2
 
                 # compute the log probability of the variable given the
                 # parametrized normal distribution using the parents mean and variance
-                log_p[env_mask] += torch.distributions.Normal(
+                log_p_distr = torch.distributions.Normal(
                     parent_contribution + noise_contribution, var.sqrt()
-                ).log_prob(v_env[:, parents_rep_idx])
+                ).log_prob(v_env[:, cluster_idx]).sum(axis=1)
+
+                log_p[env_mask] += log_p_distr
 
         return log_p
 
@@ -275,6 +336,28 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
         mask = ~intervention_targets.to(bool)
         log_p = -(mask * gaussian_nll).sum(dim=1)
         return log_p
+    
+    def forward(self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        samples = torch.zeros((num_samples, self.latent_dim), device=device)
+
+        # 1. for intervened targets, what do we do?
+        # 2. for hard interventions, what do we do?
+
+        eps = torch.randn(
+            (num_samples, self.latent_dim), device=device
+        )
+        log_scale = nn.Parameter(torch.zeros(1, *self.shape))
+        # if self.temperature is None:
+        #     log_scale = self.log_scale
+        # else:
+        #     log_scale = self.log_scale + np.log(self.temperature)
+        z = self.loc + torch.exp(log_scale) * eps
+        log_p = -0.5 * self.d * np.log(2 * np.pi) - torch.sum(
+            log_scale + 0.5 * torch.pow(eps, 2), list(range(1, self.latent_dim + 1))
+        )
+        return z, log_p
+
 
 
 class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
@@ -347,6 +430,21 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         q0: MultiEnvBaseDistribution = MultiEnvBaseDistribution()
 
         super().__init__(q0, flows)
+    
+    def forward(
+        self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
+    ):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # return (num_samples, latent_dim) samples from the distribution
+        samples = torch.zeros((num_samples, self.latent_dim), device=device)
+
+        # we will sample the base distribution
+        samples = self.q0.sample(num_samples, intervention_targets)
+
+        # then we will map the samples to the latent variables
+
+    
 
     def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Log probability of the latent variables.
