@@ -170,8 +170,8 @@ if __name__ == "__main__":
     causalq0 = ClusteredCausalDistribution(
         adjacency_matrix=graph,
         cluster_sizes=cluster_sizes,
-        intervention_targets_per_distr=intervention_targets_per_distr,
-        hard_interventions_per_distr=hard_interventions_per_distr,
+        intervention_targets_per_distr=torch.Tensor(intervention_targets_per_distr),
+        hard_interventions_per_distr=torch.Tensor(hard_interventions_per_distr),
         fix_mechanisms=fix_mechanisms,
     )
 
