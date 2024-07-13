@@ -86,13 +86,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         super().__init__()
 
         self.adjacency_matrix = adjacency_matrix
-        self.cluster_sizes = cluster_sizes
         self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.use_matrix = use_matrix
 
         if cluster_sizes is None:
             cluster_sizes = [1] * adjacency_matrix.shape[0]
+        self.cluster_sizes = cluster_sizes
 
         # map the node in adjacency matrix to a cluster size in the latent space
         self.cluster_mapping = dict()
