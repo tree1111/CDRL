@@ -159,6 +159,7 @@ if __name__ == "__main__":
 
     graph = adjacency_matrix
     cluster_sizes = generate_list(784 * 3, 3)
+    cluster_sizes = None
 
     # 01: Define the causal base distribution with the graph
     # causalq0 = NonparametricClusteredCausalDistribution(
