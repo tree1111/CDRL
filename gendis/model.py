@@ -78,7 +78,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
     def __init__(
         self,
         encoder,
-        lr: float = 1e-2,
+        lr: float = 1e-4,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,

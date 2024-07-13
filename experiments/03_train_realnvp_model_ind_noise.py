@@ -146,9 +146,9 @@ if __name__ == "__main__":
     data_module.setup()
 
     n_flows = 3  # number of flows to use in nonlinear ICA model
-    lr_scheduler = None
+    lr_scheduler = 'cosine'
     lr_min = 0.0
-    lr = 1e-5
+    lr = 2e-4
 
     # Define the model
     net_hidden_dim = 128
@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
     # Define flows
     L = 2
-    K = 16
+    K = 6
     n_dims = np.prod(input_shape)
     hidden_channels = 256
     split_mode = "channel"
