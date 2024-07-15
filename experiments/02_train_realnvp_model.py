@@ -42,7 +42,7 @@ def add_main_args(parser):
     # training misc args
     parser.add_argument("--root_dir", type=str, default="./", help="Root directory")
     parser.add_argument("--seed", type=int, default=1234, help="random seed")
-    parser.add_argument("--max_epochs", type=int, default=5_000, help="Max epochs")
+    parser.add_argument("--max_epochs", type=int, default=20_000, help="Max epochs")
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     data_module.setup()
 
     n_flows = 3  # number of flows to use in nonlinear ICA model
-    lr_scheduler = "cosine"
+    lr_scheduler = 'cosine'
     lr_min = 0.0
     lr = 5e-5
 
@@ -262,4 +262,4 @@ if __name__ == "__main__":
     )
 
     # save the final model
-    # torch.save(model, checkpoint_dir / "model.pt")
+    torch.save(model, checkpoint_dir / "model.pt")

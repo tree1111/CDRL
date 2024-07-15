@@ -181,6 +181,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
             x, y=None, env=distr_indicators, intervention_targets=intervention_targets
         )
 
+        # compute bits per dimension
+        bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
+
         v_hat = self(x)
         # print(
         #     log_prob.shape,
@@ -192,6 +195,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         #     label.shape,
         # )
         return {
+            "bpd": bpd,
             "log_prob": log_prob,
             "v": [width, color, fracture_thickness, fracture_num_fractures, label],
             "v_hat": v_hat,
