@@ -104,6 +104,7 @@ class VAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch[0]
         mu, std, z, x_hat = self.forward(x)
+        # print(x.min(), x.max(), x_hat.min(), x_hat.max())
         # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
         recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
         kl = self.kl_divergence(z, mu, std)

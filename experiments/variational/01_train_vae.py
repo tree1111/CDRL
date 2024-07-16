@@ -22,7 +22,6 @@ class Stack(nn.Module):
         self.width = width
 
     def forward(self, x):
-        print(x.shape)
         return x.view(x.size(0), self.channels, self.height, self.width)
 
 
@@ -112,13 +111,15 @@ if __name__ == "__main__":
     latent_dim = len(adjacency_matrix)
 
     root = "/home/adam2392/projects/data/"
+    accelerator = args.accelerator
+    intervention_types = [None, 1, 2, 3]
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
+    # intervention_types = [None]
     print(args)
     # root = args.root_dir
     seed = args.seed
     max_epochs = args.max_epochs
-    accelerator = args.accelerator
     batch_size = args.batch_size
     log_dir = args.log_dir
 
@@ -150,37 +151,18 @@ if __name__ == "__main__":
         ]
     )
 
-    # load dataset
-    datasets = []
-    intervention_targets_per_distr = []
-    hard_interventions_per_distr = None
-    num_distrs = 0
-    for intervention_idx in [None, 1, 2, 3]:
-        dataset = CausalMNIST(
-            root=root,
-            graph_type=graph_type,
-            label=0,
-            download=True,
-            train=True,
-            n_jobs=None,
-            intervention_idx=intervention_idx,
-            transform=transform,
-        )
-        dataset.prepare_dataset(overwrite=False)
-        datasets.append(dataset)
-        num_distrs += 1
-        intervention_targets_per_distr.append(dataset.intervention_targets)
-
     # now we can wrap this in a pytorch lightning datamodule
     data_module = ClusteredMultiDistrDataModule(
-        datasets=datasets,
+        root=root,
+        graph_type=graph_type,
         num_workers=num_workers,
         batch_size=batch_size,
-        intervention_targets_per_distr=intervention_targets_per_distr,
+        intervention_types=intervention_types,
+        transform=transform,
         log_dir=log_dir,
         flatten=False,
     )
-    data_module.setup()
+    # data_module.setup()
 
     lr_scheduler = "cosine"
     lr_min = 1e-7
@@ -211,6 +193,7 @@ if __name__ == "__main__":
         DeconvBlock(
             28, channels, 3, stride=2, padding=3, output_padding=1, last=True
         ),  # Output: (3, 28, 28)
+        nn.Sigmoid(),
     )
 
     # 02: Define now the full pytorch lightning model

@@ -1,6 +1,6 @@
 import collections
 from pathlib import Path
-
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -8,6 +8,7 @@ from joblib import Parallel, delayed
 from PIL import Image
 from scipy import stats
 from torchvision.datasets.mnist import MNIST
+from torch.utils.data import TensorDataset
 from torchvision.transforms.functional import pil_to_tensor
 
 from .morphomnist import morpho, perturb
@@ -56,7 +57,9 @@ def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=Non
             color_intervention = 0.01
         else:
             color_intervention = 1.0
+        # ensures that the width is at least 2
         width = (torch.rand(size=(n_samples, 1)) * 2) * width_intervention
+        width = torch.minimum(width, torch.FloatTensor([2.0]).expand_as(width))
 
         # different colors correlate with the fracture
         # - thickness of the fracture will be more
@@ -111,7 +114,7 @@ def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=Non
 
     meta_labels["label"] = [label] * n_samples
     # add intervention targets
-    if intervention_idx is None:
+    if intervention_idx is None or intervention_idx == 0:
         meta_labels["intervention_targets"] = [[0, 0, 0]] * n_samples
     elif intervention_idx == 1:
         # intervene and change the distribution of the width
@@ -215,69 +218,125 @@ class CausalMNIST(MNIST):
         self.graph_type = graph_type
 
     def prepare_dataset(self, overwrite=False):
+        """Prepare the dataset by applying the perturbations."""
         dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
-        intervention_idx = self.intervention_idx if self.intervention_idx is not None else 0
-        if self.train:
-            dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-train.pt"
-        else:
-            dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-test.pt"
-        if dataset_fpath.exists() and not overwrite:
-            print(f'Loading dataset from "{dataset_fpath}"')
+        
+        # defaults to the observational case only
+        intervention_idx_list = self.intervention_idx if self.intervention_idx is not None else [0]
+        for idx, intervention_idx in enumerate(intervention_idx_list):
+            dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
+    
+            # None is a misnomer for intervention_idx being 0
+            if intervention_idx is None:
+                intervention_idx = 0
 
-            dataset = torch.load(dataset_fpath)
-            n_samples = len(dataset)
+            # check if the dataset already exists, and if so, just load it
+            if self.train:
+                dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-train.pt"
+            else:
+                dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-test.pt"
 
-            imgs = torch.zeros((n_samples, 3, 28, 28))
+            if dataset_fpath.exists() and not overwrite:
+                continue
+
+            if self.train:
+                mnist_data = MNIST(self.root, train=True, download=True)
+            else:
+                mnist_data = MNIST(self.root, train=False, download=True)
+
+            raw_imgs = get_mnist_digit(mnist_data.data, mnist_data.targets, self.label)
+            n_samples = len(raw_imgs)
+
+            print("\n\nGenerating dataset: for label", self.label, "with", n_samples, "samples")
+
+            meta_labels = latent_scm_single_digit_params(
+                self.graph_type,
+                self.label,
+                n_samples=n_samples,
+                intervention_idx=intervention_idx,
+            )
+            cmap = plt.cm.viridis  # Use a continuous colormap like viridis and extract RGB values
+
+            # now actually generate the data per image
+            dataset = Parallel(n_jobs=self.n_jobs)(
+                delayed(_prepare_image)(raw_imgs, meta_labels, idx, cmap, self.label)
+                for idx in range(n_samples)
+            )
+            # imgs = torch.zeros((n_samples, 3, 28, 28))
+            imgs = []
             meta_labels = collections.defaultdict(list)
             for idx, (img, meta_label) in enumerate(dataset):
-                if idx == 0:
-                    print(pil_to_tensor(img).shape, meta_label)
-                imgs[idx, ...] = pil_to_tensor(img)
+                imgs.append(img)
                 for key in meta_label.keys():
                     meta_labels[key].append(meta_label[key])
-            self.data = imgs
-            self.meta_labels = meta_labels
-            self.intervention_targets = self.meta_labels.get("intervention_targets")[0]
-            self.meta_labels = meta_labels
-            return
 
-        if self.train:
-            mnist_data = MNIST(self.root, train=True, download=True)
-        else:
-            mnist_data = MNIST(self.root, train=False, download=True)
+            dataset_path.mkdir(exist_ok=True, parents=True)
+            torch.save(dataset, dataset_fpath)
+        
+        # actually load the dataset
+        for idx, intervention_idx in enumerate(intervention_idx_list):
+            dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
+    
+            # None is a misnomer for intervention_idx being 0
+            if intervention_idx is None:
+                intervention_idx = 0
 
-        raw_imgs = get_mnist_digit(mnist_data.data, mnist_data.targets, self.label)
-        n_samples = len(raw_imgs)
+            # check if the dataset already exists, and if so, just load it
+            if self.train:
+                dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-train.pt"
+            else:
+                dataset_fpath = dataset_path / f"{self.graph_type}-{intervention_idx}-test.pt"
 
-        print("Generating dataset: for label", self.label, "with", n_samples, "samples")
+            self._load_dataset(idx, dataset_fpath)
+        self._prepare_metadata()
 
-        meta_labels = latent_scm_single_digit_params(
-            self.graph_type,
-            self.label,
-            n_samples=n_samples,
-            intervention_idx=self.intervention_idx,
-        )
-        cmap = plt.cm.viridis  # Use a continuous colormap like viridis and extract RGB values
+    def _load_dataset(self, idx, dataset_fpath):
+        print(f'\n\nLoading dataset from "{dataset_fpath}"')
+        dataset = torch.load(dataset_fpath)
+        n_samples = len(dataset)
 
-        # now actually generate the data per image
-        dataset = Parallel(n_jobs=self.n_jobs)(
-            delayed(_prepare_image)(raw_imgs, meta_labels, idx, cmap, self.label)
-            for idx in range(n_samples)
-        )
-        imgs = torch.zeros((n_samples, 3, 28, 28))
+        imgs = []
         meta_labels = collections.defaultdict(list)
-        for idx, (img, meta_label) in enumerate(dataset):
-            if idx == 0:
-                print(pil_to_tensor(img).shape, meta_label)
-            imgs[idx, ...] = pil_to_tensor(img)
+        for jdx, (img, meta_label) in enumerate(dataset):
+            imgs.append(img)
             for key in meta_label.keys():
                 meta_labels[key].append(meta_label[key])
 
-        dataset_path.mkdir(exist_ok=True, parents=True)
-        torch.save(dataset, dataset_fpath)
-        self.data = imgs
-        self.meta_labels = meta_labels
-        self.intervention_targets = self.meta_labels.get("intervention_targets")[0]
+        # add distribution indicator
+        meta_labels['distribution_indicator'] = [idx] * n_samples
+
+        if idx == 0:
+            self.data = imgs
+            self.meta_labels = meta_labels
+            self.intervention_targets = torch.Tensor(self.meta_labels.get("intervention_targets"))
+        else:
+            self.data.extend(imgs)
+            for key in meta_labels.keys():
+                self.meta_labels[key].extend(meta_labels[key])
+            # self.intervention_targets.extend(meta_labels["intervention_targets"])
+            self.intervention_targets = torch.cat((self.intervention_targets, torch.Tensor(meta_labels["intervention_targets"])), dim=0)
+
+    def _prepare_metadata(self):
+        width = torch.tensor(self.meta_labels["width"])
+        color = torch.tensor(self.meta_labels["color"])
+        fracture_thickness = torch.tensor(self.meta_labels["fracture_thickness"])
+        fracture_num_fractures = torch.tensor(self.meta_labels["fracture_num_fractures"])
+        label = torch.tensor(self.meta_labels["label"])
+        intervention_targets = torch.tensor(self.meta_labels["intervention_targets"])
+        distr_indicators = torch.tensor(self.meta_labels["distribution_indicator"])
+        # create Tensors for each dataset
+        self.metadata = TensorDataset(
+            width,
+            color,
+            fracture_thickness,
+            fracture_num_fractures,
+            label,
+            distr_indicators,
+            intervention_targets,
+        )
+
+    def __len__(self):
+        return len(self.data)
 
     def __getitem__(self, index):
         """Get a sample from the image dataset.
@@ -289,12 +348,11 @@ class CausalMNIST(MNIST):
         - fracture_num_fractures
         - label
         """
-        img, meta_label = self.data[index], self.meta_labels[index]
+        img, meta_label = self.data[index], self.metadata[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
         # img = Image.fromarray(img.numpy(), mode="L")
-
         if self.transform is not None:
             img = self.transform(img)
 

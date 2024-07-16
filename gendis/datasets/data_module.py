@@ -9,6 +9,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from torchvision.datasets import VisionDataset
 
+from gendis.datasets import CausalMNIST
 from .utils import summary_statistics
 
 
@@ -53,67 +54,107 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
 
     def __init__(
         self,
-        datasets: List[VisionDataset],
+        root,
+        graph_type,
         batch_size: int,
-        intervention_targets_per_distr: Tensor,
+        label: int=0,
+        intervention_types=None,
         num_workers: int = -1,
         train_size: float = 0.9,
         val_size: float = 0.05,
+        transform=None,
         log_dir: Optional[Path] = None,
         flatten: bool = False,
     ) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.intervention_targets_per_distr = intervention_targets_per_distr
         self.log_dir = Path(log_dir)
 
+        self.transform = transform
         self.train_size = train_size
         self.val_size = val_size
-        self.datasets = datasets
         self.flatten = flatten
 
+        self.root = root
+        self.label=label
+        self.graph_type = graph_type
+        self.intervention_types = intervention_types
+
     def setup(self, stage: Optional[str] = None) -> None:
-        meta_labels = collections.defaultdict(list)
-        distr_indicators = []
+        dataset = CausalMNIST(
+            root=self.root,
+            graph_type=self.graph_type,
+            label=self.label,
+            download=True,
+            train=True,
+            n_jobs=None,
+            intervention_idx=self.intervention_types,
+            transform=self.transform,
+        )
+        dataset.prepare_dataset()
+
+        # meta_labels = collections.defaultdict(list)
+        # distr_indicators = []
+
+        # load dataset
+        # datasets = []
+        # intervention_targets_per_distr = []
+        # hard_interventions_per_distr = None
+        # num_distrs = 0
+        # for intervention_idx in self.intervention_types:
+        #     dataset = CausalMNIST(
+        #         root=self.root,
+        #         graph_type=self.graph_type,
+        #         label=0,
+        #         download=True,
+        #         train=True,
+        #         n_jobs=None,
+        #         intervention_idx=intervention_idx,
+        #         transform=self.transform,
+        #     )
+        #     dataset.prepare_dataset(overwrite=False)
+        #     datasets.append(dataset)
+        #     num_distrs += 1
+        #     intervention_targets_per_distr.append(dataset.intervention_targets)
+
+        # dataset = torch.utils.data.ConcatDataset(datasets)
 
         # load in all the pytorch datasets
-        for idx in range(len(self.datasets)):
-            if idx == 0:
-                x = self.datasets[idx].data
-                meta_labels = deepcopy(self.datasets[idx].meta_labels)
-            else:
-                x = torch.cat([x, self.datasets[idx].data], dim=0)
+        # for idx in range(len(self.datasets)):
+        #     if idx == 0:
+        #         x = self.datasets[idx].data
+        #         meta_labels = deepcopy(self.datasets[idx].meta_labels)
+        #     else:
+        #         x = torch.cat([x, self.datasets[idx].data], dim=0)
 
-                # update meta_labels
-                for key in meta_labels.keys():
-                    meta_labels[key].extend(self.datasets[idx].meta_labels[key])
-            distr_indicators.extend([idx] * len(self.datasets[idx]))
+        #         # update meta_labels
+        #         for key in meta_labels.keys():
+        #             meta_labels[key].extend(self.datasets[idx].meta_labels[key])
+        #     distr_indicators.extend([idx] * len(self.datasets[idx]))
+        # width = torch.tensor(meta_labels["width"])
+        # color = torch.tensor(meta_labels["color"])
+        # fracture_thickness = torch.tensor(meta_labels["fracture_thickness"])
+        # fracture_num_fractures = torch.tensor(meta_labels["fracture_num_fractures"])
+        # label = torch.tensor(meta_labels["label"])
+        # intervention_targets = torch.tensor(meta_labels["intervention_targets"])
+        # distr_indicators = torch.tensor(distr_indicators)
 
-        width = torch.tensor(meta_labels["width"])
-        color = torch.tensor(meta_labels["color"])
-        fracture_thickness = torch.tensor(meta_labels["fracture_thickness"])
-        fracture_num_fractures = torch.tensor(meta_labels["fracture_num_fractures"])
-        label = torch.tensor(meta_labels["label"])
-        intervention_targets = torch.tensor(meta_labels["intervention_targets"])
-        distr_indicators = torch.tensor(distr_indicators)
+        # if self.flatten:
+        #     # flatten the data per sample
+        #     x = x.view(x.size(0), -1)
 
-        if self.flatten:
-            # flatten the data per sample
-            x = x.view(x.size(0), -1)
-
-        print(x.shape, len(meta_labels), width.shape, color.shape, label.shape)
         # create Tensors for each dataset
-        dataset = TensorDataset(
-            x,
-            width,
-            color,
-            fracture_thickness,
-            fracture_num_fractures,
-            label,
-            distr_indicators,
-            intervention_targets,
-        )
+        # dataset = TensorDataset(
+        #     x,
+        #     width,
+        #     color,
+        #     fracture_thickness,
+        #     fracture_num_fractures,
+        #     label,
+        #     distr_indicators,
+        #     intervention_targets,
+        # )
         train_size = int(self.train_size * len(dataset))
         val_size = int(self.val_size * (len(dataset) - train_size))
         test_size = len(dataset) - train_size - val_size
