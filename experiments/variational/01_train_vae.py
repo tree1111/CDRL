@@ -110,8 +110,6 @@ if __name__ == "__main__":
     graph_type = "chain"
     adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
     latent_dim = len(adjacency_matrix)
-    results_dir = Path("./results/")
-    results_dir.mkdir(exist_ok=True, parents=True)
 
     root = "/home/adam2392/projects/data/"
     # root = "/Users/adam2392/pytorch_data/"
@@ -130,7 +128,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_fname = f"{graph_type}-seed={seed}-model.pt"
+    model_fname = f"vae-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -229,9 +227,10 @@ if __name__ == "__main__":
     )
 
     # 04b: Define the trainer for the model
-    checkpoint_root_dir = f"{graph_type}-seed={seed}"
+    checkpoint_root_dir = f"vae-{graph_type}-seed={seed}"
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
+    
     logger = None
     wandb = False
     check_val_every_n_epoch = 1
