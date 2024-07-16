@@ -41,7 +41,6 @@ class VAE(pl.LightningModule):
     def encode(self, x):
         hidden = self.encoder(x)
 
-        print("Encoded dimensions: ", hidden.shape)
         # map to mean and variance of the latent space
         high_dim_mean = self.encode_to_mean(hidden)
         high_dim_var = self.encode_to_var(hidden)
@@ -79,17 +78,6 @@ class VAE(pl.LightningModule):
         x_hat = self.decode(z)
         return mean, std, z, x_hat
 
-    def kl_divergence(self, z, mean, var):
-        q_z = torch.distributions.Normal(mean, var)
-        p_z = torch.distributions.Normal(torch.zeros_like(mean), torch.ones_like(var))
-
-        # compute log probability of z under the distribution q_z and p_z
-        # log_qz = q_z.log_prob(z)
-        # log_pz = p_z.log_prob(z)
-
-        # compute the KL divergence between these two log distributions
-        return torch.distributions.kl.kl_divergence(q_z, p_z).sum(-1)
-
     def training_step(self, batch, batch_idx) -> torch.Tensor | torch.Dict[str, torch.Any]:
         # data tensor and meta-data are passed in the batch
         x = batch[0]
@@ -98,8 +86,8 @@ class VAE(pl.LightningModule):
         mu, std, z, x_hat = self.forward(x)
 
         # first, compute the reconstruction loss
-        recon_loss = F.mse_loss(x_hat, x, reduction="sum")
-        # recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
+        recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
 
         # next compute the KL divergence of the latent space from a standard normal distribution
         kl = self.kl_divergence(z, mu, std)
@@ -116,10 +104,11 @@ class VAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch[0]
         mu, std, z, x_hat = self.forward(x)
-        recon_loss = F.mse_loss(x_hat, x, reduction="sum")
-        # recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
+        recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
         kl = self.kl_divergence(z, mu, std)
         elbo = -1.0 * (recon_loss - kl).mean()
+        self.log("validation_loss", elbo, on_step=True, on_epoch=True, prog_bar=True)
         return elbo
 
     def configure_optimizers(self) -> dict | torch.optim.Optimizer:
