@@ -11,3 +11,4 @@ pywhy-graphs
 scikit-image
 scikit-learn
 joblib
+lightning-bolts

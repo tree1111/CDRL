@@ -121,6 +121,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         environments = torch.ones(intervention_targets_per_distr.shape[0], 1, device=device)
 
         # parametrize the trainable means for the noise distributions
+        # for each separate distribution
         noise_means, noise_means_requires_grad = set_initial_noise_parameters(
             self.dag,
             fix_mechanisms,
@@ -133,6 +134,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         )
 
         # parametrize the trainable standard deviations for the noise distributions
+        # for each separate distribution
         noise_stds, noise_stds_requires_grad = set_initial_noise_parameters(
             self.dag,
             fix_mechanisms,
@@ -165,6 +167,10 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 raise ValueError(
                     "Intervention targets and hard interventions must have the same length."
                 )
+        if hard_interventions is None:
+            hard_interventions = torch.zeros(self.latent_dim)
+        if intervention_targets is None:
+            intervention_targets = torch.zeros_like(hard_interventions)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -172,7 +178,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         samples = torch.zeros((num_samples, self.latent_dim), device=device)
 
         # return the log probability of the samples
-        log_p = torch.zeros(1, device=device)
+        log_p = torch.zeros(num_samples, device=device)
 
         # start from observational environment
         noise_env_idx = 0
@@ -183,40 +189,52 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
             # get start/end in the representation for this cluster
             start, end = self.cluster_mapping[idx]
-            parents_rep_idx = np.arange(start, end, dtype=int)
+            cluster_idx = np.arange(start, end, dtype=int)
 
             # compute the contribution of the parents
             if len(parents) == 0 or (
                 intervention_targets[idx] == 1 and hard_interventions[idx] == 1
             ):
                 parent_contribution = 0.0
+                var = self.noise_stds[noise_env_idx][idx] ** 2
             else:
+                parent_cluster_idx = np.hstack(
+                    [np.arange(*self.cluster_mapping[p], dtype=int) for p in parents]
+                )
                 # get coeffieicnts for the parents
                 # which is a vector of coefficients for each parent
                 coeffs_raw = self.coeff_values[idx][:-1]
                 if isinstance(coeffs_raw, nn.ParameterList):
                     coeffs_raw = torch.cat([c for c in coeffs_raw])
                 parent_coeffs = coeffs_raw.to(device)
-                parent_contribution = parent_coeffs.matmul(samples[:, parents_rep_idx].T)
+                parent_contribution = parent_coeffs * samples[:, parent_cluster_idx]
+
+                # compute the contribution of the noise
+                var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(
+                    samples[:, cluster_idx]
+                )
 
             # XXX: compute the contributions of the confounders
 
-            # compute the contribution of the noise
-            var = self.noise_stds[noise_env_idx][idx] ** 2 * torch.ones_like(parents_rep_idx)
             noise_coeff = self.coeff_values[idx][-1].to(device)
             noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
             var *= noise_coeff**2
+            var *= noise_coeff**2
+
+            # print(parent_contribution, noise_contribution.shape, var.shape, samples[:, idx].shape)
+
+            # samples from the normal distribution for (n_samples, cluster_dims)
+            samples[:, cluster_idx] = torch.normal(
+                parent_contribution + noise_contribution, var.sqrt()
+            )
 
             # compute the log probability of the variable given the
             # parametrized normal distribution using the parents mean and variance
-            samples[:, idx] = torch.normal(
-                parent_contribution + noise_contribution, var.sqrt(), size=(num_samples,)
+            log_p += (
+                torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
+                .log_prob(samples[:, cluster_idx])
+                .mean(axis=1)
             )
-            # compute the log probability of the variable given the
-            # parametrized normal distribution using the parents mean and variance
-            log_p += torch.distributions.Normal(
-                parent_contribution + noise_contribution, var.sqrt()
-            ).log_prob(samples[:, parents_rep_idx])
         return samples, log_p
 
     def log_prob(
@@ -340,6 +358,22 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
     exogenous noise in the SCM.
     """
 
+    def __init__(self, shape, trainable=True):
+        if isinstance(shape, int):
+            shape = (shape,)
+        if isinstance(shape, list):
+            shape = tuple(shape)
+        self.shape = shape
+        self.n_dim = len(shape)
+        self.d = np.prod(shape)
+        if trainable:
+            self.loc = nn.Parameter(torch.zeros(1, *self.shape))
+            self.log_scale = nn.Parameter(torch.zeros(1, *self.shape))
+        else:
+            self.register_buffer("loc", torch.zeros(1, *self.shape))
+            self.register_buffer("log_scale", torch.zeros(1, *self.shape))
+        self.temperature = None  # Temperature parameter for annealed sampling
+
     def log_prob(self, x: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         # compute the log-likelihood over the non-intervened targets for each sample
         gaussian_nll = gaussian_nll_loss(
@@ -350,20 +384,35 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
         return log_p
 
     def forward(
-        self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
+        self,
+        num_samples=1,
+        intervention_targets: Tensor = None,
+        hard_interventions: Tensor = None,
+        mean_shift=None,
+        std_scale=None,
     ):
+        # XXX: unsure how to sample when the latent variables are interevened
+        # 1. Do we intervene by perturbing the exogenous distribution?
+        # 2. Do we intervene by perturbing the latent variables in the NonParametricBaseDistribution?
+        #   - it is unclear
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        samples = torch.zeros((num_samples, self.latent_dim), device=device)
 
-        # 1. for intervened targets, what do we do?
-        # 2. for hard interventions, what do we do?
+        # for intervention, we shift either the mean or scale of the distribution from
+        # the standard normal distribution
+        mean = 0.0
+        std = 1.0
+        if mean_shift is not None:
+            mean += mean_shift
+        if std_scale is not None:
+            std *= std_scale
+        eps = torch.normal(mean=mean, std=std, size=(num_samples, self.latent_dim), device=device)
 
-        eps = torch.randn((num_samples, self.latent_dim), device=device)
+        # apply a temperature to the log scaling
         log_scale = nn.Parameter(torch.zeros(1, *self.shape))
-        # if self.temperature is None:
-        #     log_scale = self.log_scale
-        # else:
-        #     log_scale = self.log_scale + np.log(self.temperature)
+        if self.temperature is None:
+            log_scale = self.log_scale
+        else:
+            log_scale = self.log_scale + np.log(self.temperature)
         z = self.loc + torch.exp(log_scale) * eps
         log_p = -0.5 * self.d * np.log(2 * np.pi) - torch.sum(
             log_scale + 0.5 * torch.pow(eps, 2), list(range(1, self.latent_dim + 1))
@@ -445,15 +494,18 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
     def forward(
         self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
     ):
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # return (num_samples, latent_dim) samples from the distribution
-        samples = torch.zeros((num_samples, self.latent_dim), device=device)
+        # samples = torch.zeros((num_samples, self.latent_dim), device=device)
 
         # we will sample the base distribution
-        samples = self.q0.sample(num_samples, intervention_targets)
-
+        # samples = self.q0.sample(num_samples, intervention_targets)
         # then we will map the samples to the latent variables
+
+        # XXX: see MultiEnvBaseDistribution
+        raise RuntimeError("Not implemented.")
 
     def log_prob(self, v_latent: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
         """Log probability of the latent variables.
@@ -484,7 +536,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
 
         # permute inputs to be in topological order
         # do we need the topological order
-        v_latent = v_latent[:, :]
+        v_latent = v_latent[:, self.perm]
 
         # map latent V to the exogenous variables
         log_q, u = self._determinant_terms(representation_intervention_targets, v_latent)

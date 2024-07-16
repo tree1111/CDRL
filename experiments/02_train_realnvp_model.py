@@ -12,9 +12,7 @@ import torchvision
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
 from gendis.encoder import CausalMultiscaleFlow
 from gendis.model import NeuralClusteredASCMFlow
-from gendis.normalizing_flow.distribution import (
-    ClusteredCausalDistribution,
-)
+from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
 def generate_list(x, n_clusters):
@@ -93,6 +91,8 @@ if __name__ == "__main__":
     # output filename for the results
     fname = results_dir / f"{graph_type}-seed={seed}-results.npz"
 
+    model_fname = f"{graph_type}-seed={seed}-model.pt"
+
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     data_module.setup()
 
     n_flows = 3  # number of flows to use in nonlinear ICA model
-    lr_scheduler = 'cosine'
+    lr_scheduler = "cosine"
     lr_min = 1e-7
     lr = 2e-4
 
@@ -262,4 +262,4 @@ if __name__ == "__main__":
     )
 
     # save the final model
-    torch.save(model, checkpoint_dir / "model.pt")
+    torch.save(model, checkpoint_dir / model_fname)

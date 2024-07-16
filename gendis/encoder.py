@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from normflows.distributions import BaseDistribution
 
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
-from normflows.distributions import BaseDistribution
 
 
 class CausalMultiscaleFlow(nn.Module):
@@ -144,10 +144,10 @@ class CausalMultiscaleFlow(nn.Module):
                 log_det += log_det_
 
         # apply flatten layer
+        self.flow_dims = [z_.shape[1:] for z_ in z]
         z = torch.cat([self.flatten_layer(z_) for z_ in z], dim=1)
 
         # optionally "invert" the causal distribution
-
         return z, log_det
 
     def save(self, path):
@@ -167,7 +167,12 @@ class CausalMultiscaleFlow(nn.Module):
         self.load_state_dict(torch.load(path))
 
     def sample(
-        self, num_samples=1, intervention_targets=None, hard_interventions=None, temperature=None
+        self,
+        num_samples=1,
+        # img_shape=None,
+        intervention_targets=None,
+        hard_interventions=None,
+        temperature=None,
     ):
         """Samples from flow-based approximate distribution
 
@@ -184,12 +189,21 @@ class CausalMultiscaleFlow(nn.Module):
             self.set_temperature(temperature)
 
         # first sample from the causal distribution
-        z_, log_q_ = self.causalq0(num_samples)
+        z_, log_q_ = self.causalq0.forward(
+            num_samples,
+            intervention_targets=intervention_targets,
+            hard_interventions=hard_interventions,
+        )
+
+        reshaped_z_ = []
+        for i in range(self.num_levels):
+            reshaped_z_.append(
+                z_[:, : np.prod(self.flow_dims[i])].reshape(num_samples, *self.flow_dims[i])
+            )
+            z_ = z_[:, np.prod(self.flow_dims[i]) :]
 
         for i in range(self.num_levels):
-            # if self.class_cond:
-            #     z_, log_q_ = self.q0[i](num_samples, y)
-            # else:
+            z_ = reshaped_z_[i]
             if i == 0:
                 log_q = log_q_
                 z = z_
@@ -213,7 +227,7 @@ class CausalMultiscaleFlow(nn.Module):
         Args:
           temperature: Temperature parameter
         """
-        for q0 in self.q0:
+        for q0 in self.causalq0:
             if hasattr(q0, "temperature"):
                 q0.temperature = temperature
             else:
