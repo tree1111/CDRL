@@ -135,6 +135,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         # compute bits per dimension
         bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
         bpd = bpd.mean()
+
+        print('\nLoss in training_step:', loss)
+        print('BPD in training_step:', bpd)
         self.log(f"train_loss", bpd, prog_bar=False)
         self.log(f"loss", loss, prog_bar=False)
         self.log(f"train_bpd", bpd, prog_bar=False)
@@ -199,13 +202,14 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         #     label.shape,
         # )
         return {
-            "bpd": bpd.mean(),
-            "log_prob": log_prob.mean(),
+            "bpd": bpd,
+            "log_prob": log_prob,
             "v": [width, color, fracture_thickness, fracture_num_fractures, label],
             "v_hat": v_hat,
         }
 
     def validation_epoch_end(self, outputs: List[dict]) -> None:
+        # log_prob = outputs["log_prob"]
         log_prob = torch.cat([o["log_prob"] for o in outputs])
         # v_hat = torch.cat([o["v_hat"] for o in outputs])
         loss = -log_prob.mean()
