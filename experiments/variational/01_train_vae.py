@@ -62,7 +62,7 @@ def DeconvBlock(
             padding=padding,
             output_padding=output_padding,
         ),
-        nn.Tanh(),
+        nn.Sigmoid(),
     )
 
 
@@ -113,9 +113,9 @@ if __name__ == "__main__":
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
     intervention_types = [None, 1, 2, 3]
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "cpu"
-    # intervention_types = [None]
+    root = "/Users/adam2392/pytorch_data/"
+    accelerator = "cpu"
+    intervention_types = [None]
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_fname = f"vae-{graph_type}-seed={seed}-model.pt"
+    model_fname = f"vae-withonlysigmoid-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -193,7 +193,6 @@ if __name__ == "__main__":
         DeconvBlock(
             28, channels, 3, stride=2, padding=3, output_padding=1, last=True
         ),  # Output: (3, 28, 28)
-        nn.Sigmoid(),
     )
 
     # 02: Define now the full pytorch lightning model
@@ -207,7 +206,7 @@ if __name__ == "__main__":
     )
 
     # 04b: Define the trainer for the model
-    checkpoint_root_dir = f"vae-{graph_type}-seed={seed}"
+    checkpoint_root_dir = f"vae-withonlysigmoid-{graph_type}-seed={seed}"
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
 
