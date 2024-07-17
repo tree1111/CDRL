@@ -69,34 +69,34 @@ if __name__ == "__main__":
     graph_type = "chain"
     adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
     latent_dim = len(adjacency_matrix)
-    results_dir = Path("./results/")
-    results_dir.mkdir(exist_ok=True, parents=True)
 
     root = "/home/adam2392/projects/data/"
-    # root = '/Users/adam2392/pytorch_data/'
-    # accelerator = 'cpu'
+    accelerator = args.accelerator
+    intervention_types = [None, 1, 2, 3]
+    num_workers = 10
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
+    # num_workers = 2
     print(args)
     # root = args.root_dir
     seed = args.seed
     max_epochs = args.max_epochs
-    accelerator = args.accelerator
     batch_size = args.batch_size
     log_dir = args.log_dir
 
     devices = 1
     n_jobs = 1
-    num_workers = 10
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    fname = results_dir / f"{graph_type}-seed={seed}-results.npz"
-
-    model_fname = f"{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"cnf-joint-{graph_type}-seed={seed}"
+    model_fname = f"cnf-joint-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
-    logging.info(f"\n\n\tsaving to {fname} \n")
+    logging.info(f"\n\n\tsaving to {model_fname} \n")
 
     # set seed
     np.random.seed(seed)
@@ -113,37 +113,21 @@ if __name__ == "__main__":
         ]
     )
 
-    # load dataset
-    datasets = []
-    intervention_targets_per_distr = []
-    hard_interventions_per_distr = None
-    num_distrs = 0
-    for intervention_idx in [None, 1, 2, 3]:
-        dataset = CausalMNIST(
-            root=root,
-            graph_type=graph_type,
-            label=0,
-            download=True,
-            train=True,
-            n_jobs=None,
-            intervention_idx=intervention_idx,
-            transform=transform,
-        )
-        dataset.prepare_dataset(overwrite=False)
-        datasets.append(dataset)
-        num_distrs += 1
-        intervention_targets_per_distr.append(dataset.intervention_targets)
-
     # now we can wrap this in a pytorch lightning datamodule
     data_module = ClusteredMultiDistrDataModule(
-        datasets=datasets,
+        root=root,
+        graph_type=graph_type,
         num_workers=num_workers,
         batch_size=batch_size,
-        intervention_targets_per_distr=intervention_targets_per_distr,
+        intervention_types=intervention_types,
+        transform=transform,
         log_dir=log_dir,
         flatten=False,
     )
     data_module.setup()
+
+    intervention_targets_per_distr = data_module.dataset.intervention_targets
+    hard_interventions_per_distr = None
 
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
