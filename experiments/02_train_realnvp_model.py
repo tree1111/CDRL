@@ -44,7 +44,7 @@ def add_main_args(parser):
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
 
     # model args
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
     lr_min = 1e-7
-    lr = 2e-4
+    lr = 2e-5
 
     # Define the model
     net_hidden_dim = 128
@@ -216,7 +216,6 @@ if __name__ == "__main__":
     )
 
     # 04b: Define the trainer for the model
-    checkpoint_root_dir = f"{graph_type}-seed={seed}"
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
     logger = None
