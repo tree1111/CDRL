@@ -118,16 +118,15 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         loss : Tensor
             The average loss over the batch, which is the negative log likelihood.
         """
-        (
-            x,
-            width,
-            color,
-            fracture_thickness,
-            fracture_num_fractures,
-            label,
-            distr_indicators,
-            intervention_targets,
-        ) = batch
+        (x, meta_labels) = batch
+        print(x.shape, len(meta_labels), type(meta_labels))
+        width = meta_labels[:, 0]
+        color = meta_labels[:, 1]
+        fracture_thickness = meta_labels[:, 2]
+        fracture_num_fractures = meta_labels[:, 3]
+        label = meta_labels[:, 4]
+        distr_indicators = meta_labels[:, 5]
+        intervention_targets = meta_labels[:, 6]
         log_prob = self.encoder.log_prob(
             x, y=None, env=distr_indicators, intervention_targets=intervention_targets
         )
@@ -172,16 +171,15 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
                 - v_hat: Tensor of shape (n_samples, n_outputs)
                     The estimated latent variables.
         """
-        (
-            x,
-            width,
-            color,
-            fracture_thickness,
-            fracture_num_fractures,
-            label,
-            distr_indicators,
-            intervention_targets,
-        ) = batch
+        (x, meta_labels) = batch
+        print(x.shape, len(meta_labels), type(meta_labels))
+        width = meta_labels[0]
+        color = meta_labels[1]
+        fracture_thickness = meta_labels[2]
+        fracture_num_fractures = meta_labels[3]
+        label = meta_labels[4]
+        distr_indicators = meta_labels[5]
+        intervention_targets = meta_labels[6]
         log_prob = self.encoder.log_prob(
             x, y=None, env=distr_indicators, intervention_targets=intervention_targets
         )
