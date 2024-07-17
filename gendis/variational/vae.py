@@ -36,7 +36,6 @@ class VAE(pl.LightningModule):
         # for the gaussian likelihood
         self.log_scale = torch.nn.Parameter(torch.Tensor([0.0]))
 
-
     def reparametrize(self, mu, log_var):
         # Reparametrization Trick to allow gradients to backpropagate from the
         # stochastic part of the model
@@ -93,7 +92,6 @@ class VAE(pl.LightningModule):
         log_pxz = dist.log_prob(x)
         return log_pxz.sum(dim=(1, 2, 3))
 
-
     def training_step(self, batch, batch_idx) -> torch.Tensor | torch.Dict[str, torch.Any]:
         # data tensor and meta-data are passed in the batch
         x = batch[0]
@@ -121,7 +119,7 @@ class VAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch[0]
         mu, std, z, x_hat = self.forward(x)
-        print('\n\n\n', x.min(), x.max(), x_hat.min(), x_hat.max())
+        print("\n\n\n", x.min(), x.max(), x_hat.min(), x_hat.max())
         print(x.shape, x_hat.shape)
         # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
         # recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')

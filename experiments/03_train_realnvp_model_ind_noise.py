@@ -46,7 +46,7 @@ def add_main_args(parser):
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
 
     # model args
@@ -71,15 +71,17 @@ if __name__ == "__main__":
     graph_type = "chain"
     adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
     latent_dim = len(adjacency_matrix)
-    results_dir = Path("./results/")
-    results_dir.mkdir(exist_ok=True, parents=True)
 
     root = "/home/adam2392/projects/data/"
+    accelerator = args.accelerator
+    intervention_types = [None, 1, 2, 3]
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
     print(args)
     # root = args.root_dir
     seed = args.seed
     max_epochs = args.max_epochs
-    accelerator = args.accelerator
     batch_size = args.batch_size
     log_dir = args.log_dir
 
@@ -89,12 +91,13 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    fname = results_dir / f"{graph_type}-seed={seed}-results.npz"
+    checkpoint_root_dir = f"cnf-indnoise-{graph_type}-seed={seed}"
+    model_fname = f"cnf-indnoise-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
-    logging.info(f"\n\n\tsaving to {fname} \n")
+    logging.info(f"\n\n\tsaving to {model_fname} \n")
 
     # set seed
     np.random.seed(seed)
@@ -105,47 +108,32 @@ if __name__ == "__main__":
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
+            # torchvision.transforms.Resize((32, 32)),
             nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
             nf.utils.Jitter(1 / 256.0),  # apply random generation
             torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 
-    # load dataset
-    datasets = []
-    intervention_targets_per_distr = []
-    hard_interventions_per_distr = None
-    num_distrs = 0
-    for intervention_idx in [None, 1, 2, 3]:
-        dataset = CausalMNIST(
-            root=root,
-            graph_type=graph_type,
-            label=0,
-            download=True,
-            train=True,
-            n_jobs=None,
-            intervention_idx=intervention_idx,
-            transform=transform,
-        )
-        dataset.prepare_dataset(overwrite=False)
-        datasets.append(dataset)
-        num_distrs += 1
-        intervention_targets_per_distr.append(dataset.intervention_targets)
-
     # now we can wrap this in a pytorch lightning datamodule
     data_module = ClusteredMultiDistrDataModule(
-        datasets=datasets,
+        root=root,
+        graph_type=graph_type,
         num_workers=num_workers,
         batch_size=batch_size,
-        intervention_targets_per_distr=intervention_targets_per_distr,
+        intervention_types=intervention_types,
+        transform=transform,
         log_dir=log_dir,
         flatten=False,
     )
     data_module.setup()
 
+    intervention_targets_per_distr = data_module.dataset.intervention_targets
+    hard_interventions_per_distr = None
+
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
-    lr_min = 0.0
+    lr_min = 1e-7
     lr = 2e-4
 
     # Define the model
@@ -233,7 +221,6 @@ if __name__ == "__main__":
     )
 
     # 04b: Define the trainer for the model
-    checkpoint_root_dir = f"{graph_type}-seed={seed}"
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
     logger = None
@@ -263,4 +250,4 @@ if __name__ == "__main__":
     )
 
     # save the final model
-    torch.save(model, checkpoint_dir / "model.pt")
+    torch.save(model, checkpoint_dir / model_fname)

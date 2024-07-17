@@ -132,9 +132,14 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
             x, y=None, env=distr_indicators, intervention_targets=intervention_targets
         )
         loss = -log_prob.mean()
-
         self.log(f"train_loss", loss, prog_bar=False)
-        return loss
+
+        # compute bits per dimension
+        bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
+        bpd = bpd.mean()
+        self.log(f"train_bpd", bpd, prog_bar=False)
+
+        return bpd
 
     def validation_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> dict[str, Tensor]:
         """Validation step.
@@ -203,7 +208,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
 
     def validation_epoch_end(self, outputs: List[dict]) -> None:
         log_prob = torch.cat([o["log_prob"] for o in outputs])
-        v_hat = torch.cat([o["v_hat"] for o in outputs])
+        # v_hat = torch.cat([o["v_hat"] for o in outputs])
         loss = -log_prob.mean()
         self.log("val_loss", loss, prog_bar=True)
 

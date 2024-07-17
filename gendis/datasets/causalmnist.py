@@ -1,14 +1,15 @@
 import collections
-from pathlib import Path
 from copy import deepcopy
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from joblib import Parallel, delayed
 from PIL import Image
 from scipy import stats
-from torchvision.datasets.mnist import MNIST
 from torch.utils.data import TensorDataset
+from torchvision.datasets.mnist import MNIST
 from torchvision.transforms.functional import pil_to_tensor
 
 from .morphomnist import morpho, perturb
@@ -220,12 +221,12 @@ class CausalMNIST(MNIST):
     def prepare_dataset(self, overwrite=False):
         """Prepare the dataset by applying the perturbations."""
         dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
-        
+
         # defaults to the observational case only
         intervention_idx_list = self.intervention_idx if self.intervention_idx is not None else [0]
         for idx, intervention_idx in enumerate(intervention_idx_list):
             dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
-    
+
             # None is a misnomer for intervention_idx being 0
             if intervention_idx is None:
                 intervention_idx = 0
@@ -272,11 +273,11 @@ class CausalMNIST(MNIST):
 
             dataset_path.mkdir(exist_ok=True, parents=True)
             torch.save(dataset, dataset_fpath)
-        
+
         # actually load the dataset
         for idx, intervention_idx in enumerate(intervention_idx_list):
             dataset_path = Path(self.root) / self.__class__.__name__ / self.graph_type
-    
+
             # None is a misnomer for intervention_idx being 0
             if intervention_idx is None:
                 intervention_idx = 0
@@ -303,18 +304,26 @@ class CausalMNIST(MNIST):
                 meta_labels[key].append(meta_label[key])
 
         # add distribution indicator
-        meta_labels['distribution_indicator'] = [idx] * n_samples
+        meta_labels["distribution_indicator"] = [idx] * n_samples
 
         if idx == 0:
             self.data = imgs
             self.meta_labels = meta_labels
-            self.intervention_targets = torch.Tensor(self.meta_labels.get("intervention_targets"))
+            self.intervention_targets = torch.Tensor(self.meta_labels.get("intervention_targets"))[
+                0
+            ].reshape(1, -1)
         else:
             self.data.extend(imgs)
             for key in meta_labels.keys():
                 self.meta_labels[key].extend(meta_labels[key])
             # self.intervention_targets.extend(meta_labels["intervention_targets"])
-            self.intervention_targets = torch.cat((self.intervention_targets, torch.Tensor(meta_labels["intervention_targets"])), dim=0)
+            self.intervention_targets = torch.cat(
+                (
+                    self.intervention_targets,
+                    torch.Tensor(meta_labels["intervention_targets"][0]).reshape(1, -1),
+                ),
+                dim=0,
+            )
 
     def _prepare_metadata(self):
         width = torch.tensor(self.meta_labels["width"])

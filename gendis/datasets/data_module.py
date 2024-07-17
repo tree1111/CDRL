@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, TensorDataset, random_split
 from torchvision.datasets import VisionDataset
 
 from gendis.datasets import CausalMNIST
+
 from .utils import summary_statistics
 
 
@@ -57,7 +58,7 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         root,
         graph_type,
         batch_size: int,
-        label: int=0,
+        label: int = 0,
         intervention_types=None,
         num_workers: int = -1,
         train_size: float = 0.9,
@@ -77,12 +78,12 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         self.flatten = flatten
 
         self.root = root
-        self.label=label
+        self.label = label
         self.graph_type = graph_type
         self.intervention_types = intervention_types
 
     def setup(self, stage: Optional[str] = None) -> None:
-        dataset = CausalMNIST(
+        self.dataset = CausalMNIST(
             root=self.root,
             graph_type=self.graph_type,
             label=self.label,
@@ -92,7 +93,7 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
             intervention_idx=self.intervention_types,
             transform=self.transform,
         )
-        dataset.prepare_dataset()
+        self.dataset.prepare_dataset()
 
         # meta_labels = collections.defaultdict(list)
         # distr_indicators = []
@@ -155,14 +156,14 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         #     distr_indicators,
         #     intervention_targets,
         # )
-        train_size = int(self.train_size * len(dataset))
-        val_size = int(self.val_size * (len(dataset) - train_size))
-        test_size = len(dataset) - train_size - val_size
+        train_size = int(self.train_size * len(self.dataset))
+        val_size = int(self.val_size * (len(self.dataset) - train_size))
+        test_size = len(self.dataset) - train_size - val_size
         (
             self.train_dataset,
             self.val_dataset,
             self.test_dataset,
-        ) = random_split(dataset, [train_size, val_size, test_size])
+        ) = random_split(self.dataset, [train_size, val_size, test_size])
 
     def meta_label_strs(self):
         return [

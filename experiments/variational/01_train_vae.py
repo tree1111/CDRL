@@ -12,11 +12,8 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchvision
+from pl_bolts.models.autoencoders.components import resnet18_decoder, resnet18_encoder
 
-from pl_bolts.models.autoencoders.components import (
-    resnet18_decoder,
-    resnet18_encoder,
-)
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
 from gendis.variational.vae import VAE
 
