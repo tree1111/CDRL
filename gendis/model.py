@@ -134,7 +134,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         self.log(f"train_loss", loss, prog_bar=False)
 
         # compute bits per dimension
-        bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
+        bpd = log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
         bpd = bpd.mean()
         self.log(f"train_bpd", bpd, prog_bar=False)
 
@@ -185,7 +185,7 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         )
 
         # compute bits per dimension
-        bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
+        bpd = log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
 
         v_hat = self(x)
         # print(
