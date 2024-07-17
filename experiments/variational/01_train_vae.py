@@ -1,3 +1,6 @@
+# refs:
+# 1. https://github.com/williamFalcon/pytorch-lightning-vae/blob/main/vae.py for VAE with resnet
+
 import argparse
 import logging
 import random
@@ -172,7 +175,7 @@ if __name__ == "__main__":
 
     lr_scheduler = "cosine"
     lr_min = 1e-7
-    lr = 2e-4
+    lr = 2e-5
 
     channels = 3
     input_height = 32
