@@ -11,14 +11,18 @@ class VAE(pl.LightningModule):
         latent_dim,
         encoder,
         decoder,
+        encoder_out_dim,
         lr: float = 1e-4,
         weight_decay: float = 0,
         lr_scheduler: Optional[str] = None,
         lr_min: float = 0.0,
     ) -> None:
         super().__init__()
+        self.save_hyperparameters()
+
         self.encoder = encoder
         self.decoder = decoder
+        self.encoder_out_dim = encoder_out_dim
 
         self.lr = lr
         self.weight_decay = weight_decay
@@ -26,10 +30,12 @@ class VAE(pl.LightningModule):
         self.lr_min = lr_min
 
         # map encoder output to the stochastic latent space
-        self.encode_to_mean = torch.nn.Linear(latent_dim, latent_dim)
-        self.encode_to_var = torch.nn.Linear(latent_dim, latent_dim)
+        self.encode_to_mean = torch.nn.Linear(self.encoder_out_dim, latent_dim)
+        self.encode_to_var = torch.nn.Linear(self.encoder_out_dim, latent_dim)
 
-        self.save_hyperparameters()
+        # for the gaussian likelihood
+        self.log_scale = torch.nn.Parameter(torch.Tensor([0.0]))
+
 
     def reparametrize(self, mu, log_var):
         # Reparametrization Trick to allow gradients to backpropagate from the
@@ -78,6 +84,16 @@ class VAE(pl.LightningModule):
         x_hat = self.decode(z)
         return mean, std, z, x_hat
 
+    def gaussian_likelihood(self, x_hat, logscale, x):
+        scale = torch.exp(logscale)
+        mean = x_hat
+        dist = torch.distributions.Normal(mean, scale)
+
+        # measure prob of seeing image under p(x|z)
+        log_pxz = dist.log_prob(x)
+        return log_pxz.sum(dim=(1, 2, 3))
+
+
     def training_step(self, batch, batch_idx) -> torch.Tensor | torch.Dict[str, torch.Any]:
         # data tensor and meta-data are passed in the batch
         x = batch[0]
@@ -87,7 +103,8 @@ class VAE(pl.LightningModule):
 
         # first, compute the reconstruction loss
         # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
-        recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        # recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
 
         # next compute the KL divergence of the latent space from a standard normal distribution
         kl = self.kl_divergence(z, mu, std)
@@ -104,9 +121,11 @@ class VAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch[0]
         mu, std, z, x_hat = self.forward(x)
-        # print(x.min(), x.max(), x_hat.min(), x_hat.max())
+        print('\n\n\n', x.min(), x.max(), x_hat.min(), x_hat.max())
+        print(x.shape, x_hat.shape)
         # recon_loss = F.mse_loss(x_hat, x, reduction="sum")
-        recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        # recon_loss = torch.nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
+        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
         kl = self.kl_divergence(z, mu, std)
         elbo = -1.0 * (recon_loss - kl).mean()
         self.log("validation_loss", elbo, on_step=True, on_epoch=True, prog_bar=True)

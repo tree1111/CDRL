@@ -10,6 +10,10 @@ import torch
 import torch.nn as nn
 import torchvision
 
+from pl_bolts.models.autoencoders.components import (
+    resnet18_decoder,
+    resnet18_encoder,
+)
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
 from gendis.variational.vae import VAE
 
@@ -129,7 +133,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_fname = f"vae-withonlysigmoid-{graph_type}-seed={seed}-model.pt"
+    model_fname = f"vae-resnet-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"vae-resnet-{graph_type}-seed={seed}"
 
     # set up logging
     logger = logging.getLogger()
@@ -145,6 +150,7 @@ if __name__ == "__main__":
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
+            torchvision.transforms.Resize((32, 32)),
             nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
             nf.utils.Jitter(1 / 256.0),  # apply random generation
             torchvision.transforms.RandomRotation(350),  # get random rotations
@@ -169,44 +175,53 @@ if __name__ == "__main__":
     lr = 2e-4
 
     channels = 3
-    input_height = 28
-    input_width = 28
+    input_height = 32
+    input_width = 32
     input_shape = (channels, input_height, input_width)
 
-    # 01: Define the encoder
-    kernel_size = 1
-    encoder = nn.Sequential(
-        ConvBlock(channels, 28, kernel_size=kernel_size),
-        ConvBlock(28, 64, 4),
-        ConvBlock(64, 128, 4),
-        ConvBlock(128, 256, 2),
-        nn.Flatten(),
-        nn.Linear(256, 3),
-    )
+    # 01: Define the Convolutional encoder/decoder
+    # kernel_size = 1
+    # encoder = nn.Sequential(
+    #     ConvBlock(channels, 28, kernel_size=kernel_size),
+    #     ConvBlock(28, 64, 4),
+    #     ConvBlock(64, 128, 4),
+    #     ConvBlock(128, 256, 2),
+    #     nn.Flatten(),
+    #     nn.Linear(256, 3),
+    # )
+    # decoder = nn.Sequential(
+    #     nn.Linear(3, 256 * 2 * 2),
+    #     Stack(256, 2, 2),  # Output: (256, 2, 2)
+    #     DeconvBlock(256, 128, 4, stride=2, padding=1, output_padding=0),  # Output: (128, 4, 4)
+    #     DeconvBlock(128, 64, 4, stride=2, padding=1, output_padding=0),  # Output: (64, 8, 8)
+    #     DeconvBlock(64, 28, 4, stride=2, padding=1, output_padding=0),  # Output: (28, 16, 16)
+    #     DeconvBlock(
+    #         28, channels, 3, stride=2, padding=3, output_padding=1, last=True
+    #     ),  # Output: (3, 28, 28)
+    # )
 
-    decoder = nn.Sequential(
-        nn.Linear(3, 256 * 2 * 2),
-        Stack(256, 2, 2),  # Output: (256, 2, 2)
-        DeconvBlock(256, 128, 4, stride=2, padding=1, output_padding=0),  # Output: (128, 4, 4)
-        DeconvBlock(128, 64, 4, stride=2, padding=1, output_padding=0),  # Output: (64, 8, 8)
-        DeconvBlock(64, 28, 4, stride=2, padding=1, output_padding=0),  # Output: (28, 16, 16)
-        DeconvBlock(
-            28, channels, 3, stride=2, padding=3, output_padding=1, last=True
-        ),  # Output: (3, 28, 28)
+    encoder = resnet18_encoder(False, False)
+    decoder = resnet18_decoder(
+        latent_dim=latent_dim, input_height=input_height, first_conv=False, maxpool1=False
     )
+    # encoder = nn.Sequential(
+    #     nn.Linear(2352, 512),
+    #     nn.ReLU(),
+    #     nn.Linear(512, 256),
+    # )
 
     # 02: Define now the full pytorch lightning model
     model = VAE(
         latent_dim=3,
         encoder=encoder,
         decoder=decoder,
+        encoder_out_dim=512,
         lr=lr,
         lr_scheduler=lr_scheduler,
         lr_min=lr_min,
     )
 
     # 04b: Define the trainer for the model
-    checkpoint_root_dir = f"vae-withonlysigmoid-{graph_type}-seed={seed}"
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
 
