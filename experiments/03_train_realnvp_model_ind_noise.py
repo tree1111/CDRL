@@ -75,9 +75,9 @@ if __name__ == "__main__":
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
     intervention_types = [None, 1, 2, 3]
-    root = "/Users/adam2392/pytorch_data/"
-    accelerator = "cpu"
-    intervention_types = [None, 1]
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
     print(args)
     # root = args.root_dir
     seed = args.seed
