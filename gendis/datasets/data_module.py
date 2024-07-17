@@ -186,7 +186,7 @@ class ClusteredMultiDistrDataModule(LightningDataModule):
         val_loader = DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.num_workers,
         )
         return val_loader
