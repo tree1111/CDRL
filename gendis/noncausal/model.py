@@ -107,3 +107,4 @@ class ImageFlow(pl.LightningModule):
         bpd = bpd.mean()
 
         self.log('test_bpd', bpd)
+

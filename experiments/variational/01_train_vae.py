@@ -275,7 +275,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_fname = f"vae-resnet-{graph_type}-seed={seed}-model.pt"
-    checkpoint_dir = f"vae-resnet-{graph_type}-seed={seed}"
+    checkpoint_dir = Path(f"./vae-resnet-{graph_type}-seed={seed}")
 
     # set up logging
     logger = logging.getLogger()
