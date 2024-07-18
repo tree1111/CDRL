@@ -56,13 +56,13 @@ class ImageFlow(pl.LightningModule):
         return bpd.mean() if not return_ll else log_px
 
     @torch.no_grad()
-    def sample(self, img_shape, z_init=None):
+    def sample(self, img_shape, num_samples=1, z_init=None):
         """
         Sample a batch of images from the flow.
         """
         # Sample latent representation from prior
         if z_init is None:
-            z = self.prior.sample(sample_shape=img_shape).to(self.device)
+            z = self.prior.sample(num_samples=num_samples,).to(self.device)
         else:
             z = z_init.to(self.device)
 

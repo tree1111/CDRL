@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     checkpoint_root_dir = f"nf-indnoise-{graph_type}-seed={seed}"
-    model_fname = f"nf-indnoise-{graph_type}-seed={seed}-model.pt"
+    model_fname = f"nf-nochannelmask-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
 
     flow_layers = []
-    n_flows = 4
+    n_flows = 8
     if use_vardeq:
         vardeq_layers = [
             CouplingLayer(
@@ -169,14 +169,14 @@ if __name__ == "__main__":
                 c_in=3,
             )
         ]
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=32),
-                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-        ]
+    # for i in range(n_flows):
+    #     flow_layers += [
+    #         CouplingLayer(
+    #             network=GatedConvNet(c_in=3, c_hidden=32),
+    #             mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
+    #             c_in=3,
+    #         )
+    #     ]
     flow_layers += [Reshape((3, 28, 28), (784 * 3,))]
 
     output, ldj = torch.randn(1, 3, 28, 28), 0
