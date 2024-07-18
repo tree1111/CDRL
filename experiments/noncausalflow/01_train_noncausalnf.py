@@ -111,7 +111,7 @@ if __name__ == "__main__":
             # torchvision.transforms.Resize((32, 32)),
             nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
             nf.utils.Jitter(1 / 256.0),  # apply random generation
-            torchvision.transforms.RandomRotation(350),  # get random rotations
+            # torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
     lr_min = 1e-7
-    lr = 2e-4
+    lr = 1e-3
 
     graph = adjacency_matrix
     cluster_sizes = generate_list(784 * 3, 3)
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="train_bpd",
+        monitor="val_bpd",
         every_n_epochs=check_val_every_n_epoch,
     )
 
