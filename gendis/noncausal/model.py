@@ -1,15 +1,14 @@
+import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
-import numpy as np
 import torch.optim as optim
-
-from normflows.distributions import DiagGaussian
-
+from normflows.distributions import DiagGaussian, BaseDistribution
 
 class ImageFlow(pl.LightningModule):
+    prior: BaseDistribution
 
-    def __init__(self, flows, latent_dim, import_samples=8, device=None):
+    def __init__(self, flows, prior, import_samples=8, lr=1e-3):
         """
         Inputs:
             flows - A list of flows (each a nn.Module) that should be applied on the images.
@@ -20,17 +19,12 @@ class ImageFlow(pl.LightningModule):
         self.import_samples = import_samples
         # Create prior distribution for final latent space
         # self.prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
-        self.prior = DiagGaussian(latent_dim)
+        self.prior = prior
+
+        self.lr = lr
 
         # Example input for visualizing the graph
-        self.example_input_array = train_set[0][0].unsqueeze(dim=0)
-        if device is None:
-            if torch.cuda.is_available():
-                self.device = torch.device("cuda:0")
-            else:
-                self.device = torch.device("cpu")
-        else:
-            self.device = device
+        # self.example_input_array = train_set[0][0].unsqueeze(dim=0)
 
     def forward(self, imgs):
         # The forward function is only used for visualizing the graph
@@ -50,10 +44,11 @@ class ImageFlow(pl.LightningModule):
         Otherwise, the ouptut metric is bits per dimension (scaled negative log likelihood)
         """
         z, ldj = self.encode(imgs)
-        log_pz = self.prior.log_prob(z).sum(dim=[1,2,3])
+        log_pz = self.prior.log_prob(z)
         log_px = ldj + log_pz
         nll = -log_px
-        # Calculating bits per dimension
+
+        # Calculating bits per dimension for each batch
         bpd = nll * np.log2(np.exp(1)) / np.prod(imgs.shape[1:])
         return bpd.mean() if not return_ll else log_px
 
@@ -75,7 +70,7 @@ class ImageFlow(pl.LightningModule):
         return z
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
         # An scheduler is optional, but can help in flows to get the last bpd improvement
         scheduler = optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [optimizer], [scheduler]
@@ -83,12 +78,12 @@ class ImageFlow(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # Normalizing flows are trained by maximum likelihood => return bpd
         loss = self._get_likelihood(batch[0])
-        self.log('train_bpd', loss)
+        self.log("train_bpd", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self._get_likelihood(batch[0])
-        self.log('val_bpd', loss)
+        self.log("val_bpd", loss)
 
     def test_step(self, batch, batch_idx):
         # Perform importance sampling during testing => estimate likelihood M times for each image
@@ -106,5 +101,4 @@ class ImageFlow(pl.LightningModule):
         bpd = -img_ll * np.log2(np.exp(1)) / np.prod(batch[0].shape[1:])
         bpd = bpd.mean()
 
-        self.log('test_bpd', bpd)
-
+        self.log("test_bpd", bpd)

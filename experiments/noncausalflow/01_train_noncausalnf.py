@@ -14,6 +14,16 @@ import torchvision
 from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
 from gendis.encoder import CausalMultiscaleFlow
 from gendis.model import NeuralClusteredASCMFlow
+from gendis.noncausal.flows import (
+    CouplingLayer,
+    Dequantization,
+    GatedConvNet,
+    VariationalDequantization,
+    create_channel_mask,
+    create_checkerboard_mask,
+    Reshape,
+)
+from gendis.noncausal.model import ImageFlow
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
@@ -48,17 +58,6 @@ def add_main_args(parser):
     )
     parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
-
-    # model args
-    # parser.add_argument(
-    #     "--model_name",
-    #     type=str,
-    #     choices=["decision_tree", "ridge"],
-    #     default="decision_tree",
-    #     help="name of model",
-    # )
-    # parser.add_argument("--alpha", type=float, default=1, help="regularization strength")
-    # parser.add_argument("--max_depth", type=int, default=2, help="max depth of tree")
     return parser
 
 
@@ -75,9 +74,11 @@ if __name__ == "__main__":
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
     intervention_types = [None, 1, 2, 3]
+    num_workers = 10
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
     # intervention_types = [None, 1]
+    # num_workers = 2
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -87,12 +88,12 @@ if __name__ == "__main__":
 
     devices = 1
     n_jobs = 1
-    num_workers = 10
+    
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"cnf-indnoise-{graph_type}-seed={seed}"
-    model_fname = f"cnf-indnoise-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-indnoise-{graph_type}-seed={seed}"
+    model_fname = f"nf-indnoise-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -136,88 +137,58 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 2e-4
 
-    # Define the model
-    net_hidden_dim = 128
-    net_hidden_dim_cbn = 128
-    net_hidden_layers = 3
-    net_hidden_layers_cbn = 3
-    fix_mechanisms = False
-
     graph = adjacency_matrix
     cluster_sizes = generate_list(784 * 3, 3)
     cluster_sizes = None
-
-    # 01: Define the causal base distribution with the graph
-    # causalq0 = NonparametricClusteredCausalDistribution(
-    #     adjacency_matrix=graph,
-    #     cluster_sizes=cluster_sizes,
-    #     intervention_targets_per_distr=intervention_targets_per_distr,
-    #     hard_interventions_per_distr=hard_interventions_per_distr,
-    #     fix_mechanisms=fix_mechanisms,
-    #     n_flows=n_flows,
-    #     n_hidden_dim=net_hidden_dim,
-    #     n_layers=net_hidden_layers,
-    # )
-    causalq0 = ClusteredCausalDistribution(
-        adjacency_matrix=graph,
-        cluster_sizes=cluster_sizes,
-        intervention_targets_per_distr=torch.Tensor(intervention_targets_per_distr),
-        hard_interventions_per_distr=hard_interventions_per_distr,
-        fix_mechanisms=fix_mechanisms,
-    )
-
-    noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3 - 3,))
-
     input_shape = (3, 28, 28)
     channels = 3
+    use_vardeq = False
 
-    # Define flows
-    L = 2
-    K = 6
-    n_dims = np.prod(input_shape)
-    hidden_channels = 256
-    split_mode = "channel"
-    scale = True
+    # Define the distributions
+    noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
 
-    stride_factor = 2
-
-    # Set up flows, distributions and merge operations
-    merges = []
-    flows = []
-    for i in range(L):
-        flows_ = []
-        for j in range(K):
-            n_chs = channels * 2 ** (L + 1 - i)
-            flows_ += [
-                nf.flows.GlowBlock(n_chs, hidden_channels, split_mode=split_mode, scale=scale)
-            ]
-        flows_ += [nf.flows.Squeeze()]
-        flows += [flows_]
-        if i > 0:
-            merges += [nf.flows.Merge()]
-            latent_shape = (
-                input_shape[0] * stride_factor ** (L - i),
-                input_shape[1] // stride_factor ** (L - i),
-                input_shape[2] // stride_factor ** (L - i),
+    flow_layers = []
+    n_flows = 4
+    if use_vardeq:
+        vardeq_layers = [
+            CouplingLayer(
+                network=GatedConvNet(c_in=2, c_out=2, c_hidden=16),
+                mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+                c_in=3,
             )
-        else:
-            latent_shape = (
-                input_shape[0] * stride_factor ** (L + 1),
-                input_shape[1] // stride_factor**L,
-                input_shape[2] // stride_factor**L,
+            for i in range(4)
+        ]
+        flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+    else:
+        flow_layers += [Dequantization()]
+
+    for i in range(n_flows):
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=3, c_hidden=32),
+                mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+                c_in=3,
             )
-        print(n_chs, np.prod(latent_shape), latent_shape)
+        ]
+    for i in range(n_flows):
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=3, c_hidden=32),
+                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
+                c_in=3,
+            )
+        ]
+    flow_layers += [Reshape((3, 28, 28), (784 * 3,))]
 
-    # 03: Define the final normalizing flow model
-    # Construct flow model with the multiscale architecture
-    encoder = CausalMultiscaleFlow(causalq0, flows, merges, noiseq0=noiseq0)
+    output, ldj = torch.randn(1, 3, 28, 28), 0
+    for flow in flow_layers:
+        output, ldj = flow(output, ldj)
+        print('Running: ', type(flow), [x.shape for x in output])
 
-    # 04a: Define now the full pytorch lightning model
-    model = NeuralClusteredASCMFlow(
-        encoder=encoder,
+    model = ImageFlow(
+        flow_layers,
+        prior=noiseq0,
         lr=lr,
-        lr_scheduler=lr_scheduler,
-        lr_min=lr_min,
     )
 
     # 04b: Define the trainer for the model
@@ -229,7 +200,7 @@ if __name__ == "__main__":
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="train_loss",
+        monitor="train_bpd",
         every_n_epochs=check_val_every_n_epoch,
     )
 

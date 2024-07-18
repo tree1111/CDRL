@@ -136,8 +136,8 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         bpd = -log_prob * np.log2(np.exp(1)) / np.prod(x.shape[1:])
         bpd = bpd.mean()
 
-        print('\nLoss in training_step:', loss)
-        print('BPD in training_step:', bpd)
+        print("\nLoss in training_step:", loss)
+        print("BPD in training_step:", bpd)
         self.log(f"train_loss", bpd, prog_bar=False)
         self.log(f"loss", loss, prog_bar=False)
         self.log(f"train_bpd", bpd, prog_bar=False)

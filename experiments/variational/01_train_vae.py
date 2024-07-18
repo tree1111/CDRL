@@ -321,9 +321,9 @@ if __name__ == "__main__":
     #     model_fname,
     # )
 
-    epoch=9988
-    step=419538
-    checkpoint_path = checkpoint_dir / f'epoch={epoch}-step={step}.ckpt'
+    epoch = 9988
+    step = 419538
+    checkpoint_path = checkpoint_dir / f"epoch={epoch}-step={step}.ckpt"
     train_from_checkpoint(
         data_module,
         max_epochs,
