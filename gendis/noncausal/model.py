@@ -62,7 +62,7 @@ class ImageFlow(pl.LightningModule):
         """
         # Sample latent representation from prior
         if z_init is None:
-            z = self.prior.sample(num_samples=num_samples,).to(self.device)
+            z = self.prior.sample(num_samples=num_samples).to(self.device)
         else:
             z = z_init.to(self.device)
 

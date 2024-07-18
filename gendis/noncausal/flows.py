@@ -264,14 +264,14 @@ class Reshape(Flow):
     def forward(self, z, log_det, reverse=False):
         log_det += 0
         if reverse:
-            return self.inverse(z)
+            return self.inverse(z, log_det)
 
         s = z.size()
         z = z.view(s[0], *self.out_shape)
         return z, log_det
 
-    def inverse(self, z):
-        log_det = 0
+    def inverse(self, z, log_det):
+        log_det += 0
         s = z.size()
         z = z.view(s[0], *self.in_shape)
         return z, log_det

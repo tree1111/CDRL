@@ -208,6 +208,7 @@ if __name__ == "__main__":
         max_epochs=max_epochs,
         logger=logger,
         devices=devices,
+        gradient_clip_val=1.0,
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator=accelerator,
