@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory containing the Python script
-SCRIPT_NAME="02_train_realnvp_model.py"
+SCRIPT_NAME="01_train_noncausalnf.py"
 # SCRIPT_NAME="03_train_realnvp_model_ind_noise.py"
 
 LOG_DIR="/home/adam2392/projects/logs/"
