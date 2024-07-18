@@ -18,13 +18,12 @@ from gendis.noncausal.flows import (
     CouplingLayer,
     Dequantization,
     GatedConvNet,
+    Reshape,
     VariationalDequantization,
     create_channel_mask,
     create_checkerboard_mask,
-    Reshape,
 )
 from gendis.noncausal.model import ImageFlow
-from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
 def generate_list(x, n_clusters):
@@ -88,7 +87,7 @@ if __name__ == "__main__":
 
     devices = 1
     n_jobs = 1
-    
+
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
@@ -183,7 +182,7 @@ if __name__ == "__main__":
     output, ldj = torch.randn(1, 3, 28, 28), 0
     for flow in flow_layers:
         output, ldj = flow(output, ldj)
-        print('Running: ', type(flow), [x.shape for x in output])
+        print("Running: ", type(flow), [x.shape for x in output])
 
     model = ImageFlow(
         flow_layers,

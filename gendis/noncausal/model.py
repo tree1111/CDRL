@@ -3,7 +3,8 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from normflows.distributions import DiagGaussian, BaseDistribution
+from normflows.distributions import BaseDistribution, DiagGaussian
+
 
 class ImageFlow(pl.LightningModule):
     prior: BaseDistribution
@@ -15,6 +16,8 @@ class ImageFlow(pl.LightningModule):
             import_samples - Number of importance samples to use during testing (see explanation below). Can be changed at any time
         """
         super().__init__()
+        self.save_hyperparameters()
+
         self.flows = nn.ModuleList(flows)
         self.import_samples = import_samples
         # Create prior distribution for final latent space

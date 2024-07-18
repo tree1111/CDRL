@@ -265,7 +265,7 @@ class Reshape(Flow):
         log_det += 0
         if reverse:
             return self.inverse(z)
-        
+
         s = z.size()
         z = z.view(s[0], *self.out_shape)
         return z, log_det
