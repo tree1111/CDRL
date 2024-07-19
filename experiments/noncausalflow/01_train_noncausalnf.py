@@ -91,8 +91,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-nochannelmask-clipgrad-batch1024-{graph_type}-seed={seed}"
-    model_fname = f"nf-nochannelmask-clipgrad-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-notransform-clipgrad-batch1024-{graph_type}-seed={seed}"
+    model_fname = f"nf-notransform-clipgrad-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -111,7 +111,7 @@ if __name__ == "__main__":
             # torchvision.transforms.Resize((32, 32)),
             nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
             nf.utils.Jitter(1 / 256.0),  # apply random generation
-            # torchvision.transforms.RandomRotation(350),  # get random rotations
+            torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 
@@ -140,25 +140,31 @@ if __name__ == "__main__":
     cluster_sizes = None
     input_shape = (3, 28, 28)
     channels = 3
-    use_vardeq = False
+    use_vardeq = True
 
     # Define the distributions
     noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
 
     flow_layers = []
     n_flows = 8
-    if use_vardeq:
-        vardeq_layers = [
-            CouplingLayer(
-                network=GatedConvNet(c_in=2, c_out=2, c_hidden=16),
-                mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-            for i in range(4)
-        ]
-        flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
-    else:
-        flow_layers += [Dequantization()]
+    # if use_vardeq:
+    #     vardeq_layers = [
+    #         CouplingLayer(
+    #             network=GatedConvNet(c_in=6, c_out=6, c_hidden=16),
+    #             mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+    #             c_in=3,
+    #         )
+    #         for i in range(1)
+    #     ]
+    #     # flow_layers += vardeq_layers
+    #     flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+    # else:
+    #     flow_layers += [Dequantization()]
+    # output, ldj = torch.randn(2, 3, 28, 28), 0
+    # output = output / output.max() * 256
+    # for flow in flow_layers:
+    #     output, ldj = flow(output, ldj)
+    #     print("Running: ", type(flow), [x.shape for x in output])
 
     for i in range(n_flows):
         flow_layers += [
