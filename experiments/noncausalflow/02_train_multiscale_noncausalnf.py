@@ -11,15 +11,13 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
-from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.encoder import CausalMultiscaleFlow
-from gendis.model import NeuralClusteredASCMFlow
+from gendis.datasets import ClusteredMultiDistrDataModule
 from gendis.noncausal.flows import (
     CouplingLayer,
-    Dequantization,
     GatedConvNet,
     Reshape,
-    VariationalDequantization,
+    SplitFlow,
+    SqueezeFlow,
     create_channel_mask,
     create_checkerboard_mask,
 )
@@ -39,15 +37,6 @@ def add_main_args(parser):
     """Caching uses the non-default values from argparse to name the saving directory.
     Changing the default arg an argument will break cache compatibility with previous runs.
     """
-
-    # dataset args
-    # parser.add_argument(
-    #     "--dataset_name", type=str, default="rotten_tomatoes", help="name of dataset"
-    # )
-    # parser.add_argument(
-    #     "--subsample_frac", type=float, default=1, help="fraction of samples to use"
-    # )
-
     # training misc args
     parser.add_argument("--root_dir", type=str, default="./", help="Root directory")
     parser.add_argument("--seed", type=int, default=1234, help="random seed")
@@ -75,15 +64,17 @@ if __name__ == "__main__":
     intervention_types = [None, 1, 2, 3]
     num_workers = 10
     gradient_clip_val = None  # 1.0
+    batch_size = args.batch_size
+
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
     # intervention_types = [None, 1]
-    # num_workers = 2
+    # num_workers = 1
+    # batch_size = 10
     print(args)
     # root = args.root_dir
     seed = args.seed
     max_epochs = args.max_epochs
-    batch_size = args.batch_size
     log_dir = args.log_dir
 
     devices = 1
@@ -147,26 +138,7 @@ if __name__ == "__main__":
     noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
 
     flow_layers = []
-    n_flows = 8
-    # if use_vardeq:
-    #     vardeq_layers = [
-    #         CouplingLayer(
-    #             network=GatedConvNet(c_in=6, c_out=6, c_hidden=16),
-    #             mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-    #             c_in=3,
-    #         )
-    #         for i in range(1)
-    #     ]
-    #     # flow_layers += vardeq_layers
-    #     flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
-    # else:
-    #     flow_layers += [Dequantization()]
-    # output, ldj = torch.randn(2, 3, 28, 28), 0
-    # output = output / output.max() * 256
-    # for flow in flow_layers:
-    #     output, ldj = flow(output, ldj)
-    #     print("Running: ", type(flow), [x.shape for x in output])
-
+    n_flows = 4
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
@@ -175,21 +147,30 @@ if __name__ == "__main__":
                 c_in=3,
             )
         ]
+    flow_layers += [SqueezeFlow()]
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=32),
-                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
-                c_in=3,
+                network=GatedConvNet(c_in=12, c_hidden=48),
+                mask=create_channel_mask(c_in=12, invert=(i % 2 == 1)),
+                c_in=12,
             )
         ]
-    flow_layers += [Reshape((3, 28, 28), (784 * 3,))]
-
+    flow_layers += [SplitFlow(), SqueezeFlow()]
+    for i in range(n_flows):
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=24, c_hidden=64),
+                mask=create_channel_mask(c_in=24, invert=(i % 2 == 1)),
+                c_in=24,
+            )
+        ]
+    flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     output, ldj = torch.randn(1, 3, 28, 28), 0
     for flow in flow_layers:
         output, ldj = flow(output, ldj)
         print("Running: ", type(flow), [x.shape for x in output])
-
+    # assert False
     model = ImageFlow(
         flow_layers,
         prior=noiseq0,
