@@ -74,6 +74,7 @@ if __name__ == "__main__":
     accelerator = args.accelerator
     intervention_types = [None, 1, 2, 3]
     num_workers = 10
+    gradient_clip_val = None #1.0
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
     # intervention_types = [None, 1]
@@ -91,8 +92,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-notransform-clipgrad-batch1024-{graph_type}-seed={seed}"
-    model_fname = f"nf-notransform-clipgrad-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-noquant-channelmasking-batch1024-{graph_type}-seed={seed}"
+    model_fname = f"nf-noquant-channelmasking-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -174,14 +175,14 @@ if __name__ == "__main__":
                 c_in=3,
             )
         ]
-    # for i in range(n_flows):
-    #     flow_layers += [
-    #         CouplingLayer(
-    #             network=GatedConvNet(c_in=3, c_hidden=32),
-    #             mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
-    #             c_in=3,
-    #         )
-    #     ]
+    for i in range(n_flows):
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=3, c_hidden=32),
+                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
+                c_in=3,
+            )
+        ]
     flow_layers += [Reshape((3, 28, 28), (784 * 3,))]
 
     output, ldj = torch.randn(1, 3, 28, 28), 0
@@ -213,7 +214,7 @@ if __name__ == "__main__":
         max_epochs=max_epochs,
         logger=logger,
         devices=devices,
-        gradient_clip_val=1.0,
+        gradient_clip_val=gradient_clip_val,
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator=accelerator,
