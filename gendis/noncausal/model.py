@@ -21,8 +21,8 @@ class ImageFlow(pl.LightningModule):
         self.flows = nn.ModuleList(flows)
         self.import_samples = import_samples
         # Create prior distribution for final latent space
-        # self.prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
-        self.prior = prior
+        self.prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
+        # self.prior = prior
 
         self.lr = lr
 
@@ -47,7 +47,7 @@ class ImageFlow(pl.LightningModule):
         Otherwise, the ouptut metric is bits per dimension (scaled negative log likelihood)
         """
         z, ldj = self.encode(imgs)
-        log_pz = self.prior.log_prob(z)
+        log_pz = self.prior.log_prob(z).sum(dim=-1)
         log_px = ldj + log_pz
         nll = -log_px
 

@@ -55,7 +55,7 @@ def add_main_args(parser):
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
     return parser
 
@@ -91,8 +91,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-indnoise-{graph_type}-seed={seed}"
-    model_fname = f"nf-nochannelmask-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-nochannelmask-clipgrad-batch1024-{graph_type}-seed={seed}"
+    model_fname = f"nf-nochannelmask-clipgrad-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -131,7 +131,6 @@ if __name__ == "__main__":
     intervention_targets_per_distr = data_module.dataset.intervention_targets
     hard_interventions_per_distr = None
 
-    n_flows = 3  # number of flows to use in nonlinear ICA model
     lr_scheduler = "cosine"
     lr_min = 1e-7
     lr = 1e-3
