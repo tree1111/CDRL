@@ -36,7 +36,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  nohup $CMD > output_multiscalenf_128batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
+  nohup $CMD > output_multiscalenf_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
   echo $TRAINING_SEED
   echo "GPU index is $CUDA_VISIBLE_DEVICES"
