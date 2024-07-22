@@ -9,7 +9,7 @@ from normflows.distributions import BaseDistribution, DiagGaussian
 class ImageFlow(pl.LightningModule):
     prior: BaseDistribution
 
-    def __init__(self, flows, import_samples=8, lr=1e-3, lr_scheduler=None):
+    def __init__(self, flows, import_samples=8, lr=1e-3, lr_min=1e-8, lr_scheduler=None):
         """
         Inputs:
             flows - A list of flows (each a nn.Module) that should be applied on the images.
@@ -26,6 +26,7 @@ class ImageFlow(pl.LightningModule):
 
         self.lr = lr
         self.lr_scheduler=lr_scheduler
+        self.lr_min = lr_min
 
         # Example input for visualizing the graph
         # self.example_input_array = train_set[0][0].unsqueeze(dim=0)

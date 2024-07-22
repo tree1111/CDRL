@@ -211,6 +211,7 @@ if __name__ == "__main__":
         flow_layers,
         # prior=noiseq0,
         lr=lr,
+        lr_min=lr_min,
         lr_scheduler=lr_scheduler,
     )
     # print(output.shape)
