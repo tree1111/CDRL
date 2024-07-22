@@ -9,7 +9,7 @@ from normflows.distributions import BaseDistribution, DiagGaussian
 class ImageFlow(pl.LightningModule):
     prior: BaseDistribution
 
-    def __init__(self, flows, prior, import_samples=8, lr=1e-3):
+    def __init__(self, flows, import_samples=8, lr=1e-3):
         """
         Inputs:
             flows - A list of flows (each a nn.Module) that should be applied on the images.
@@ -47,7 +47,7 @@ class ImageFlow(pl.LightningModule):
         Otherwise, the ouptut metric is bits per dimension (scaled negative log likelihood)
         """
         z, ldj = self.encode(imgs)
-        log_pz = self.prior.log_prob(z).sum(dim=-1)
+        log_pz = self.prior.log_prob(z).sum(dim=[1, 2, 3])
         log_px = ldj + log_pz
         nll = -log_px
 
@@ -66,10 +66,13 @@ class ImageFlow(pl.LightningModule):
         else:
             z = z_init.to(self.device)
 
+        # print('\n\nInside image flow...')
+        # print(z.shape)
         # Transform z to x by inverting the flows
         ldj = torch.zeros(img_shape[0], device=self.device)
         for flow in reversed(self.flows):
             z, ldj = flow(z, ldj, reverse=True)
+            # print("Running: ", type(flow), z.shape)
         return z
 
     def configure_optimizers(self):

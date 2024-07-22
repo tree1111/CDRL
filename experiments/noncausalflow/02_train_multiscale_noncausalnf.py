@@ -83,8 +83,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-noquant-channelmasking-batch1024-{graph_type}-seed={seed}"
-    model_fname = f"nf-noquant-channelmasking-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-3point1M-batch128-{graph_type}-seed={seed}"
+    model_fname = f"nf-3point1M-batch128-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -139,10 +139,18 @@ if __name__ == "__main__":
 
     flow_layers = []
     n_flows = 4
+    # first create a sequence of channel and checkerboard masking
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=32),
+                network=GatedConvNet(c_in=3, c_hidden=24),
+                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
+                c_in=3,
+            )
+        ]
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=3, c_hidden=24),
                 mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
                 c_in=3,
             )
@@ -151,31 +159,69 @@ if __name__ == "__main__":
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=12, c_hidden=48),
+                network=GatedConvNet(c_in=12, c_hidden=32),
                 mask=create_channel_mask(c_in=12, invert=(i % 2 == 1)),
                 c_in=12,
             )
         ]
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=12, c_hidden=32),
+                mask=create_checkerboard_mask(h=14, w=14, invert=(i % 2 == 1)),
+                c_in=12,
+            )
+        ]
+
     flow_layers += [SplitFlow(), SqueezeFlow()]
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=24, c_hidden=64),
+                network=GatedConvNet(c_in=24, c_hidden=48),
                 mask=create_channel_mask(c_in=24, invert=(i % 2 == 1)),
                 c_in=24,
             )
         ]
-    flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
-    output, ldj = torch.randn(1, 3, 28, 28), 0
+    flow_layers += [SplitFlow()]
+    for i in range(n_flows):
+        flow_layers += [
+            CouplingLayer(
+                network=GatedConvNet(c_in=12, c_hidden=64),
+                mask=create_channel_mask(c_in=12, invert=(i % 2 == 1)),
+                c_in=12,
+            )
+        ]
+    # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
+    print("\n\nRunning forward direction...")
+    output, ldj = torch.randn(5, 3, 28, 28), 0
     for flow in flow_layers:
         output, ldj = flow(output, ldj)
-        print("Running: ", type(flow), [x.shape for x in output])
-    # assert False
+        print("Running: ", type(flow), output.shape)
+
+    # Sample latent representation from prior
+    # if z_init is None:
+    #     z = self.prior.sample(sample_shape=img_shape).to(self.device)
+    # else:
+    #     z = z_init.to(self.device)
+
+    # # Transform z to x by inverting the flows
+    # ldj = torch.zeros(img_shape[0], device=self.device)
+    # for flow in reversed(self.flows):
+    #     z, ldj = flow(z, ldj, reverse=True)
+
     model = ImageFlow(
         flow_layers,
-        prior=noiseq0,
+        # prior=noiseq0,
         lr=lr,
     )
+    # print(output.shape)
+    # print('\n\n Now running reverse')
+    # for flow in reversed(flow_layers):
+    #     output, ldj = flow(output, ldj, reverse=True)
+    #     print("Running: ", type(flow), output.shape)
+    # prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
+    output = model.sample((5, 12, 7, 7))
+    # print(output.shape)
+    # assert False
 
     # 04b: Define the trainer for the model
     checkpoint_dir = Path(checkpoint_root_dir)
