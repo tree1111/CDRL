@@ -161,7 +161,7 @@ if __name__ == "__main__":
     # load in MNIST
     # mnist_train = MNIST(root, train=True, download=True, transform=transform)
     # mnist_train = DataLoader(mnist_train, batch_size=batch_size, num_workers=num_workers)
-    data_module = MNISTDataModule(data_dir=root, batch_size=batch_size)
+    data_module = MNISTDataModule(data_dir=root, batch_size=batch_size, transform=transform)
 
     graph = adjacency_matrix
     cluster_sizes = generate_list(784 * 3, 3)
