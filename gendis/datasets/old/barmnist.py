@@ -57,6 +57,11 @@ def gen_scm(cg, n):
         raise RuntimeError("The SCM is not implemented.")
 
 
+# v_sample["Digit"][i],
+#                 v_sample["Bar"][i],
+#                 v_sample["Color"][i],
+#                 raw_mnist_n,
+#                 raw_mnist_images,
 def barmnistfI(d, b, c, n, raw_mnist):
     total = len(raw_mnist[d.item()])
     ind = torch.randint(total, size=[1])
