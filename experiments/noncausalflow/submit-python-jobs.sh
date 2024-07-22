@@ -15,7 +15,7 @@ NUM_GPUS=7
 # Define the training seeds to match np.linspace(1, 10000, 11, dtype=int)
 # training_seeds=(1 1000 2000 3000 4000 5000 6000 7000 8000 9000 10000)
 # Define the training seeds from 1 to 100
-training_seeds=($(seq 1 1))
+training_seeds=($(seq 2 2))
 
 # Loop over the training seeds and submit a job for each seed
 for i in "${!training_seeds[@]}"
@@ -36,7 +36,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  nohup $CMD > output_multiscalenf_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
+  nohup $CMD > output_multiscalenf_cosinelr_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log 2>&1 &
 
   echo $TRAINING_SEED
   echo "GPU index is $CUDA_VISIBLE_DEVICES"

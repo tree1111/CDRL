@@ -65,6 +65,9 @@ if __name__ == "__main__":
     num_workers = 10
     gradient_clip_val = None  # 1.0
     batch_size = args.batch_size
+    lr_scheduler = "cosine"
+    lr_min = 1e-7
+    lr = 1e-3
 
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
@@ -83,8 +86,8 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-3point1M-batch{batch_size}-{graph_type}-seed={seed}"
-    model_fname = f"nf-3point1M-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
+    checkpoint_root_dir = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
 
     # set up logging
     logger = logging.getLogger()
@@ -122,10 +125,6 @@ if __name__ == "__main__":
 
     intervention_targets_per_distr = data_module.dataset.intervention_targets
     hard_interventions_per_distr = None
-
-    lr_scheduler = "cosine"
-    lr_min = 1e-7
-    lr = 1e-3
 
     graph = adjacency_matrix
     cluster_sizes = generate_list(784 * 3, 3)
@@ -212,6 +211,7 @@ if __name__ == "__main__":
         flow_layers,
         # prior=noiseq0,
         lr=lr,
+        lr_scheduler=lr_scheduler,
     )
     # print(output.shape)
     # print('\n\n Now running reverse')

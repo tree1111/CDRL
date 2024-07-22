@@ -9,7 +9,7 @@ from normflows.distributions import BaseDistribution, DiagGaussian
 class ImageFlow(pl.LightningModule):
     prior: BaseDistribution
 
-    def __init__(self, flows, import_samples=8, lr=1e-3):
+    def __init__(self, flows, import_samples=8, lr=1e-3, lr_scheduler=None):
         """
         Inputs:
             flows - A list of flows (each a nn.Module) that should be applied on the images.
@@ -25,6 +25,7 @@ class ImageFlow(pl.LightningModule):
         # self.prior = prior
 
         self.lr = lr
+        self.lr_scheduler=lr_scheduler
 
         # Example input for visualizing the graph
         # self.example_input_array = train_set[0][0].unsqueeze(dim=0)
@@ -77,8 +78,22 @@ class ImageFlow(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
-        # An scheduler is optional, but can help in flows to get the last bpd improvement
-        scheduler = optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
+        if self.lr_scheduler == "cosine":
+            # cosine learning rate annealing
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=self.trainer.max_epochs,
+                eta_min=self.lr_min,
+                verbose=True,
+            )
+            # lr_scheduler_config = {
+            #     "scheduler": scheduler,
+            #     "interval": "epoch",
+            # }
+            # config_dict["lr_scheduler"] = lr_scheduler_config
+        else:
+            # An scheduler is optional, but can help in flows to get the last bpd improvement
+            scheduler = optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
