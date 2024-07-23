@@ -274,7 +274,7 @@ if __name__ == "__main__":
     # output filename for the results
     model_id_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     model_id_fname = f"nf-normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
-    checkpoint_root_dir = f"nf-{model_id_fname}"
+    checkpoint_root_dir = Path(f"nf-{model_id_fname}")
     model_fname = f"nf-{model_id_fname}-model.pt"
 
     # set up logging
