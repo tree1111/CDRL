@@ -49,80 +49,63 @@ def add_main_args(parser):
     return parser
 
 
-if __name__ == "__main__":
-    # get args
-    parser = argparse.ArgumentParser()
-    parser = add_main_args(parser)
-    args = parser.parse_args()
+def train_from_checkpoint(
+    data_module,
+    max_epochs,
+    logger,
+    devices,
+    accelerator,
+    checkpoint_path,
+    checkpoint_dir,
+    model_fname,
+):
+    checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
+    current_max_epochs = checkpoint["epoch"]
+    max_epochs += current_max_epochs
+    model = ImageFlow.load_from_checkpoint(checkpoint_path)
 
-    graph_type = "chain"
-    adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
-    latent_dim = len(adjacency_matrix)
+    # 04b: Define the trainer for the model
+    checkpoint_dir.mkdir(exist_ok=True, parents=True)
 
-    root = "/home/adam2392/projects/data/"
-    accelerator = args.accelerator
-    intervention_types = [None, 1, 2, 3]
-    num_workers = 10
-    gradient_clip_val = None  # 1.0
-    batch_size = args.batch_size
-    lr_scheduler = "cosine"
-    lr_min = 1e-7
-    lr = 1e-3
-
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "cpu"
-    # intervention_types = [None, 1]
-    # num_workers = 1
-    # batch_size = 10
-    print(args)
-    # root = args.root_dir
-    seed = args.seed
-    max_epochs = args.max_epochs
-    log_dir = args.log_dir
-
-    devices = 1
-    n_jobs = 1
-
-    print("Running with n_jobs:", n_jobs)
-
-    # output filename for the results
-    checkpoint_root_dir = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
-    model_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
-
-    # set up logging
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.INFO)
-    logging.info(f"\n\n\tsaving to {model_fname} \n")
-
-    # set seed
-    np.random.seed(seed)
-    random.seed(seed)
-    pl.seed_everything(seed, workers=True)
-
-    # set up transforms for each image to augment the dataset
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToTensor(),
-            # torchvision.transforms.Resize((32, 32)),
-            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
-            nf.utils.Jitter(1 / 256.0),  # apply random generation
-            torchvision.transforms.RandomRotation(350),  # get random rotations
-        ]
+    logger = None
+    wandb = False
+    check_val_every_n_epoch = 1
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=checkpoint_dir,
+        save_top_k=5,
+        monitor="train_loss",
+        every_n_epochs=check_val_every_n_epoch,
     )
 
-    # now we can wrap this in a pytorch lightning datamodule
-    data_module = ClusteredMultiDistrDataModule(
-        root=root,
-        graph_type=graph_type,
-        num_workers=num_workers,
-        batch_size=batch_size,
-        intervention_types=intervention_types,
-        transform=transform,
-        log_dir=log_dir,
-        flatten=False,
+    # Train the model
+    trainer = pl.Trainer(
+        max_epochs=max_epochs,
+        logger=logger,
+        devices=devices,
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=check_val_every_n_epoch,
+        accelerator=accelerator,
     )
-    data_module.setup()
 
+    # 05: Fit the model and save the data
+    trainer.fit(
+        model,
+        datamodule=data_module,
+    )
+
+    # save the final model
+    torch.save(model, checkpoint_dir / model_fname)
+
+
+def train_from_scratch(
+    data_module,
+    max_epochs,
+    logger,
+    devices,
+    accelerator,
+    checkpoint_dir,
+    model_fname,
+):
     intervention_targets_per_distr = data_module.dataset.intervention_targets
     hard_interventions_per_distr = None
 
@@ -256,3 +239,103 @@ if __name__ == "__main__":
 
     # save the final model
     torch.save(model, checkpoint_dir / model_fname)
+
+
+if __name__ == "__main__":
+    # get args
+    parser = argparse.ArgumentParser()
+    parser = add_main_args(parser)
+    args = parser.parse_args()
+
+    graph_type = "chain"
+    adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
+    latent_dim = len(adjacency_matrix)
+
+    root = "/home/adam2392/projects/data/"
+    accelerator = args.accelerator
+    intervention_types = [None, 1, 2, 3]
+    num_workers = 10
+    gradient_clip_val = None  # 1.0
+    batch_size = args.batch_size
+    lr_scheduler = "cosine"
+    lr_min = 1e-7
+    lr = 1e-3
+
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
+    # num_workers = 1
+    # batch_size = 10
+    print(args)
+    # root = args.root_dir
+    seed = args.seed
+    max_epochs = args.max_epochs
+    log_dir = args.log_dir
+
+    devices = 1
+    n_jobs = 1
+
+    print("Running with n_jobs:", n_jobs)
+
+    # output filename for the results
+    checkpoint_root_dir = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed=2"
+    model_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
+    
+    # set up logging
+    logger = logging.getLogger()
+    logging.basicConfig(level=logging.INFO)
+    logging.info(f"\n\n\tsaving to {model_fname} \n")
+
+    # set seed
+    np.random.seed(seed)
+    random.seed(seed)
+    pl.seed_everything(seed, workers=True)
+
+    # set up transforms for each image to augment the dataset
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToTensor(),
+            # torchvision.transforms.Resize((32, 32)),
+            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
+            nf.utils.Jitter(1 / 256.0),  # apply random generation
+            torchvision.transforms.RandomRotation(350),  # get random rotations
+        ]
+    )
+
+    # now we can wrap this in a pytorch lightning datamodule
+    data_module = ClusteredMultiDistrDataModule(
+        root=root,
+        graph_type=graph_type,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        intervention_types=intervention_types,
+        transform=transform,
+        log_dir=log_dir,
+        flatten=False,
+    )
+    data_module.setup()
+
+    epoch = 7603
+    step = 638736
+    checkpoint_path = checkpoint_root_dir / f"epoch={epoch}-step={step}.ckpt"
+    train_from_checkpoint(
+        data_module,
+        max_epochs,
+        logger,
+        devices,
+        accelerator,
+        checkpoint_path,
+        checkpoint_root_dir,
+        model_fname,
+    )
+
+    # train from scratch
+    # train_from_scratch(
+    #     data_module,
+    #     max_epochs,
+    #     logger,
+    #     devices,
+    #     accelerator,
+    #     checkpoint_root_dir,
+    #     model_fname,
+    # )
