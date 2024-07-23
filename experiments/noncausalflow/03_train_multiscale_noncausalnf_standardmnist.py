@@ -39,18 +39,27 @@ class MNISTDataModule(pl.LightningDataModule):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
-        self.transform=transform
+        self.transform = transform
+        self.default_transform = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+            ]
+        )
 
     def setup(self, stage: str):
-        self.mnist_test = MNIST(self.data_dir, download=True, train=False)
-        self.mnist_predict = MNIST(self.data_dir, download=True, train=False)
-        mnist_full = MNIST(self.data_dir, download=True, train=True)
+        self.mnist_test = MNIST(
+            self.data_dir, download=True, train=False, transform=self.default_transform
+        )
+        self.mnist_predict = MNIST(
+            self.data_dir, download=True, train=False, transform=self.default_transform
+        )
+        mnist_full = MNIST(self.data_dir, download=True, train=True, transform=self.transform)
         self.mnist_train, self.mnist_val = random_split(
             mnist_full, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
 
     def train_dataloader(self):
-        return DataLoader(self.mnist_train, batch_size=self.batch_size, transform=self.transform)
+        return DataLoader(self.mnist_train, batch_size=self.batch_size)
 
     def val_dataloader(self):
         return DataLoader(self.mnist_val, batch_size=self.batch_size)
@@ -79,100 +88,28 @@ def add_main_args(parser):
     return parser
 
 
-if __name__ == "__main__":
-    # get args
-    parser = argparse.ArgumentParser()
-    parser = add_main_args(parser)
-    args = parser.parse_args()
+def train_from_checkpoint(
+    data_module,
+    max_epochs,
+    logger,
+    devices,
+    accelerator,
+    checkpoint_path,
+    checkpoint_dir,
+    model_fname,
+):
+    pass
 
-    graph_type = "chain"
-    adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
-    latent_dim = len(adjacency_matrix)
 
-    root = "/home/adam2392/projects/data/"
-    accelerator = args.accelerator
-    intervention_types = [None, 1, 2, 3]
-    num_workers = 10
-    gradient_clip_val = None  # 1.0
-    batch_size = args.batch_size
-    lr_scheduler = "cosine"
-    lr_min = 1e-7
-    lr = 1e-3
-
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "cpu"
-    # intervention_types = [None, 1]
-    # num_workers = 1
-    # batch_size = 10
-    print(args)
-    # root = args.root_dir
-    seed = args.seed
-    max_epochs = args.max_epochs
-    log_dir = args.log_dir
-
-    devices = 1
-    n_jobs = 1
-
-    print("Running with n_jobs:", n_jobs)
-
-    # output filename for the results
-    model_id_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
-    model_id_fname = f"nf-normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
-    checkpoint_root_dir = f"nf-{model_id_fname}"
-    model_fname = f"nf-{model_id_fname}-model.pt"
-
-    # set up logging
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.INFO)
-    logging.info(f"\n\n\tsaving to {model_fname} \n")
-
-    # set seed
-    np.random.seed(seed)
-    random.seed(seed)
-    pl.seed_everything(seed, workers=True)
-
-    # set up transforms for each image to augment the dataset
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToTensor(),
-            # torchvision.transforms.Resize((32, 32)),
-            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
-            nf.utils.Jitter(1 / 256.0),  # apply random generation
-            torchvision.transforms.RandomRotation(350),  # get random rotations
-        ]
-    )
-
-    # now we can wrap this in a pytorch lightning datamodule
-    # data_module = ClusteredMultiDistrDataModule(
-    #     root=root,
-    #     graph_type=graph_type,
-    #     num_workers=num_workers,
-    #     batch_size=batch_size,
-    #     intervention_types=intervention_types,
-    #     transform=transform,
-    #     log_dir=log_dir,
-    #     flatten=False,
-    # )
-    # data_module.setup()
-
-    # intervention_targets_per_distr = data_module.dataset.intervention_targets
-    # hard_interventions_per_distr = None
-
-    # load in MNIST
-    # mnist_train = MNIST(root, train=True, download=True, transform=transform)
-    # mnist_train = DataLoader(mnist_train, batch_size=batch_size, num_workers=num_workers)
-    data_module = MNISTDataModule(data_dir=root, batch_size=batch_size, transform=transform)
-
-    graph = adjacency_matrix
-    cluster_sizes = generate_list(784 * 3, 3)
-    cluster_sizes = None
-    input_shape = (3, 28, 28)
-    channels = 3
-    use_vardeq = True
-
-    # Define the distributions
-    noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
-
+def train_from_scratch(
+    data_module,
+    max_epochs,
+    logger,
+    devices,
+    accelerator,
+    checkpoint_dir,
+    model_fname,
+):
     flow_layers = []
     n_flows = 4
     n_chs = 1
@@ -196,21 +133,21 @@ if __name__ == "__main__":
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=n_chs*4, c_hidden=32),
-                mask=create_channel_mask(c_in=n_chs*4, invert=(i % 2 == 1)),
-                c_in=n_chs*4,
+                network=GatedConvNet(c_in=n_chs * 4, c_hidden=32),
+                mask=create_channel_mask(c_in=n_chs * 4, invert=(i % 2 == 1)),
+                c_in=n_chs * 4,
             )
         ]
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=n_chs*4, c_hidden=32),
+                network=GatedConvNet(c_in=n_chs * 4, c_hidden=32),
                 mask=create_checkerboard_mask(h=14, w=14, invert=(i % 2 == 1)),
-                c_in=n_chs*4,
+                c_in=n_chs * 4,
             )
         ]
 
     flow_layers += [SplitFlow(), SqueezeFlow()]
-    n_chs_after_split = int(n_chs*4*4/2)
+    n_chs_after_split = int(n_chs * 4 * 4 / 2)
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
@@ -220,7 +157,7 @@ if __name__ == "__main__":
             )
         ]
     flow_layers += [SplitFlow()]
-    n_chs_after_split_after_split = int(n_chs_after_split/2)
+    n_chs_after_split_after_split = int(n_chs_after_split / 2)
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
@@ -296,3 +233,82 @@ if __name__ == "__main__":
 
     # save the final model
     torch.save(model, checkpoint_dir / model_fname)
+
+
+if __name__ == "__main__":
+    # get args
+    parser = argparse.ArgumentParser()
+    parser = add_main_args(parser)
+    args = parser.parse_args()
+
+    graph_type = "chain"
+    adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
+    latent_dim = len(adjacency_matrix)
+
+    root = "/home/adam2392/projects/data/"
+    accelerator = args.accelerator
+    intervention_types = [None, 1, 2, 3]
+    num_workers = 10
+    gradient_clip_val = None  # 1.0
+    batch_size = args.batch_size
+    lr_scheduler = "cosine"
+    lr_min = 1e-7
+    lr = 1e-3
+
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
+    # num_workers = 1
+    # batch_size = 10
+    print(args)
+    # root = args.root_dir
+    seed = args.seed
+    max_epochs = args.max_epochs
+    log_dir = args.log_dir
+
+    devices = 1
+    n_jobs = 1
+
+    print("Running with n_jobs:", n_jobs)
+
+    # output filename for the results
+    model_id_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_id_fname = f"nf-normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
+    checkpoint_root_dir = f"nf-{model_id_fname}"
+    model_fname = f"nf-{model_id_fname}-model.pt"
+
+    # set up logging
+    logger = logging.getLogger()
+    logging.basicConfig(level=logging.INFO)
+    logging.info(f"\n\n\tsaving to {model_fname} \n")
+
+    # set seed
+    np.random.seed(seed)
+    random.seed(seed)
+    pl.seed_everything(seed, workers=True)
+
+    # set up transforms for each image to augment the dataset
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToTensor(),
+            # torchvision.transforms.Resize((32, 32)),
+            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
+            nf.utils.Jitter(1 / 256.0),  # apply random generation
+            torchvision.transforms.RandomRotation(350),  # get random rotations
+        ]
+    )
+
+    # load in MNIST
+    # mnist_train = MNIST(root, train=True, download=True, transform=transform)
+    # mnist_train = DataLoader(mnist_train, batch_size=batch_size, num_workers=num_workers)
+    data_module = MNISTDataModule(data_dir=root, batch_size=batch_size, transform=transform)
+
+    train_from_scratch(
+        data_module,
+        max_epochs,
+        logger,
+        devices,
+        accelerator,
+        checkpoint_root_dir,
+        model_fname,
+    )
