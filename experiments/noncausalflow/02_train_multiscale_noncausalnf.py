@@ -315,8 +315,8 @@ if __name__ == "__main__":
     )
     data_module.setup()
 
-    epoch = 7603
-    step = 638736
+    epoch = 9306
+    step = 781788
     checkpoint_path = checkpoint_root_dir / f"epoch={epoch}-step={step}.ckpt"
     train_from_checkpoint(
         data_module,
