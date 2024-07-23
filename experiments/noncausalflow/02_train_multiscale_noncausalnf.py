@@ -278,7 +278,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    checkpoint_root_dir = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed=2"
+    checkpoint_root_dir = Path(f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed=2")
     model_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
     
     # set up logging
