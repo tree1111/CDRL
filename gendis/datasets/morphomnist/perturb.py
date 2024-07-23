@@ -34,6 +34,7 @@ class Thinning(Perturbation):
             Amount of thinning relative to the estimated thickness (e.g. `amount=0.7` will
             reduce the thickness by approximately 70%).
         """
+        assert amount > 0
         self.amount = amount
 
     def __call__(self, morph: ImageMorphology) -> np.ndarray:
@@ -52,6 +53,7 @@ class Thickening(Perturbation):
             Amount of thinning relative to the estimated thickness (e.g. `amount=1.0` will
             increase the thickness by approximately 100%).
         """
+        assert amount > 0
         self.amount = amount
 
     def __call__(self, morph: ImageMorphology) -> np.ndarray:

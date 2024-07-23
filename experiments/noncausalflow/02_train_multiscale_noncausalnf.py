@@ -59,6 +59,7 @@ def train_from_checkpoint(
     checkpoint_dir,
     model_fname,
 ):
+    monitor = 'val_bpd'
     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     current_max_epochs = checkpoint["epoch"]
     max_epochs += current_max_epochs
@@ -73,7 +74,7 @@ def train_from_checkpoint(
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="train_loss",
+        monitor=monitor,
         every_n_epochs=check_val_every_n_epoch,
     )
 

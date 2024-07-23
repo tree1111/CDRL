@@ -10,7 +10,7 @@ _SKEL_LEN_MASK = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [np.sqrt(2.0), 1.0,
 def _process_img_morph(img, threshold=0.5, scale=1):
     if scale > 1:
         up_img = transform.pyramid_expand(
-            img, upscale=scale, order=3, multichannel=False
+            img, upscale=scale, order=3, channel_axis=None
         )  # type: np.ndarray
         img = (255.0 * up_img).astype(img.dtype)
 
@@ -106,7 +106,7 @@ class ImageMorphology:
         image = np.asarray(image)
         if self.scale > 1:
             down_img = transform.pyramid_reduce(
-                image, downscale=self.scale, order=3, multichannel=False
+                image, downscale=self.scale, order=3, channel_axis=None
             )  # type: np.ndarray
         else:
             down_img = image
