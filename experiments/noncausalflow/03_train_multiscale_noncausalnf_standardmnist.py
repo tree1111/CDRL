@@ -10,8 +10,8 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, random_split
+from torchvision.datasets import MNIST
 
 from gendis.datasets import ClusteredMultiDistrDataModule
 from gendis.noncausal.flows import (

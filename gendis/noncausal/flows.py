@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from normflows.flows import Flow
+from normflows.flows import AffineConstFlow, Flow
 
 
 class Dequantization(nn.Module):
@@ -309,3 +309,82 @@ class SplitFlow(nn.Module):
             z = torch.cat([z, z_split], dim=1)
             ldj -= self.prior.log_prob(z_split).sum(dim=[1, 2, 3])
         return z, ldj
+
+
+class ActNorm(AffineConstFlow):
+    """
+    An AffineConstFlow but with a data-dependent initialization,
+    where on the very first batch we clever initialize the s,t so that the output
+    is unit gaussian. As described in Glow paper.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.data_dep_init_done_cpu = torch.tensor(0.0)
+        self.register_buffer("data_dep_init_done", self.data_dep_init_done_cpu)
+
+    def forward(self, z, ldj, reverse=False):
+        if not reverse:
+            # first batch is used for initialization, c.f. batchnorm
+            if not self.data_dep_init_done > 0.0:
+                assert self.s is not None and self.t is not None
+                s_init = -torch.log(z.std(dim=self.batch_dims, keepdim=True) + 1e-6)
+                self.s.data = s_init.data
+                self.t.data = (-z.mean(dim=self.batch_dims, keepdim=True) * torch.exp(self.s)).data
+                self.data_dep_init_done = torch.tensor(1.0)
+            z, _ = super().forward(z)
+            return z, ldj
+        else:
+            z, _ = self.inverse(z)
+            return z, ldj
+
+    def inverse(self, z):
+        # first batch is used for initialization, c.f. batchnorm
+        if not self.data_dep_init_done:
+            assert self.s is not None and self.t is not None
+            s_init = torch.log(z.std(dim=self.batch_dims, keepdim=True) + 1e-6)
+            self.s.data = s_init.data
+            self.t.data = z.mean(dim=self.batch_dims, keepdim=True).data
+            self.data_dep_init_done = torch.tensor(1.0)
+        return super().inverse(z)
+
+
+class BatchNormFlow(nn.Module):
+    def __init__(self, dim, momentum=0.95, eps=1e-5):
+        super(BatchNormFlow, self).__init__()
+        # Running batch statistics
+        self.r_mean = torch.zeros(dim)
+        self.r_var = torch.ones(dim)
+        # Momentum
+        self.momentum = momentum
+        self.eps = eps
+        # Trainable scale and shift (cf. original paper)
+        self.gamma = nn.Parameter(torch.ones(dim))
+        self.beta = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, z, ldj, reverse=False):
+        # Here we only need the variance
+        mean = z.mean(0)
+        var = (z - mean).pow(2).mean(0) + self.eps
+        log_det = torch.log(self.gamma) - 0.5 * torch.log(var + self.eps)
+
+        # forward direction
+        if not reverse:
+            # Current batch stats
+            self.b_mean = z.mean(0)
+            self.b_var = (z - self.b_mean).pow(2).mean(0) + self.eps
+            # Running mean and var
+            self.r_mean = self.momentum * self.r_mean + ((1 - self.momentum) * self.b_mean)
+            self.r_var = self.momentum * self.r_var + ((1 - self.momentum) * self.b_var)
+            mean = self.b_mean
+            var = self.b_var
+
+            ldj += torch.sum(log_det, -1)
+        else:
+            mean = self.r_mean
+            var = self.r_var
+            ldj -= torch.sum(log_det, -1)
+
+        x_hat = (z - mean) / var.sqrt()
+        y = self.gamma * x_hat + self.beta
+        return y, ldj

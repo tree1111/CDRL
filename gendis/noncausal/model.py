@@ -25,7 +25,7 @@ class ImageFlow(pl.LightningModule):
         # self.prior = prior
 
         self.lr = lr
-        self.lr_scheduler=lr_scheduler
+        self.lr_scheduler = lr_scheduler
         self.lr_min = lr_min
 
         # Example input for visualizing the graph

@@ -11,8 +11,9 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
-from gendis.datasets import ClusteredMultiDistrDataModule
+from gendis.datasets import MultiDistrDataModule
 from gendis.noncausal.flows import (
+    ActNorm,
     CouplingLayer,
     GatedConvNet,
     Reshape,
@@ -59,7 +60,7 @@ def train_from_checkpoint(
     checkpoint_dir,
     model_fname,
 ):
-    monitor = 'val_bpd'
+    monitor = "val_bpd"
     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     current_max_epochs = checkpoint["epoch"]
     max_epochs += current_max_epochs
@@ -138,6 +139,8 @@ def train_from_scratch(
                 c_in=3,
             )
         ]
+        # input the shape of the coupling layer
+        flow_layers += [ActNorm((3, 1, 1))]
     flow_layers += [SqueezeFlow()]
     for i in range(n_flows):
         flow_layers += [
@@ -154,6 +157,8 @@ def train_from_scratch(
                 c_in=12,
             )
         ]
+        # input the shape of the coupling layer
+        flow_layers += [ActNorm((3, 1, 1))]
 
     flow_layers += [SplitFlow(), SqueezeFlow()]
     for i in range(n_flows):
@@ -164,6 +169,8 @@ def train_from_scratch(
                 c_in=24,
             )
         ]
+        # input the shape of the coupling layer
+        flow_layers += [ActNorm((3, 1, 1))]
     flow_layers += [SplitFlow()]
     for i in range(n_flows):
         flow_layers += [
@@ -173,12 +180,18 @@ def train_from_scratch(
                 c_in=12,
             )
         ]
+        # input the shape of the coupling layer
+        flow_layers += [ActNorm((3, 1, 1))]
     # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     print("\n\nRunning forward direction...")
-    output, ldj = torch.randn(5, 3, 28, 28), 0
-    for flow in flow_layers:
+    output, ldj = torch.randn(batch_size, 3, 28, 28), 0
+    for idx, flow in enumerate(flow_layers):
+        # try:
+        #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
+        # except Exception as e:
+        #     print(idx)
         output, ldj = flow(output, ldj)
-        print("Running: ", type(flow), output.shape)
+        print("Running: ", type(flow), output.shape, ldj.shape)
 
     # Sample latent representation from prior
     # if z_init is None:
@@ -193,7 +206,6 @@ def train_from_scratch(
 
     model = ImageFlow(
         flow_layers,
-        # prior=noiseq0,
         lr=lr,
         lr_min=lr_min,
         lr_scheduler=lr_scheduler,
@@ -205,8 +217,7 @@ def train_from_scratch(
     #     print("Running: ", type(flow), output.shape)
     # prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
     output = model.sample((5, 12, 7, 7))
-    # print(output.shape)
-    # assert False
+    print(output.shape)
 
     # 04b: Define the trainer for the model
     checkpoint_dir = Path(checkpoint_root_dir)
@@ -281,7 +292,7 @@ if __name__ == "__main__":
     # output filename for the results
     checkpoint_root_dir = Path(f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed=2")
     model_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
-    
+
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
@@ -304,39 +315,48 @@ if __name__ == "__main__":
     )
 
     # now we can wrap this in a pytorch lightning datamodule
-    data_module = ClusteredMultiDistrDataModule(
+    # data_module = ClusteredMultiDistrDataModule(
+    #     root=root,
+    #     graph_type=graph_type,
+    #     num_workers=num_workers,
+    #     batch_size=batch_size,
+    #     intervention_types=intervention_types,
+    #     transform=transform,
+    #     log_dir=log_dir,
+    #     flatten=False,
+    # )
+    data_module = MultiDistrDataModule(
         root=root,
+        stratify_distrs=True,
         graph_type=graph_type,
         num_workers=num_workers,
         batch_size=batch_size,
-        intervention_types=intervention_types,
         transform=transform,
         log_dir=log_dir,
-        flatten=False,
     )
     data_module.setup()
 
-    epoch = 9306
-    step = 781788
-    checkpoint_path = checkpoint_root_dir / f"epoch={epoch}-step={step}.ckpt"
-    train_from_checkpoint(
-        data_module,
-        max_epochs,
-        logger,
-        devices,
-        accelerator,
-        checkpoint_path,
-        checkpoint_root_dir,
-        model_fname,
-    )
-
-    # train from scratch
-    # train_from_scratch(
+    # epoch = 9306
+    # step = 781788
+    # checkpoint_path = checkpoint_root_dir / f"epoch={epoch}-step={step}.ckpt"
+    # train_from_checkpoint(
     #     data_module,
     #     max_epochs,
     #     logger,
     #     devices,
     #     accelerator,
+    #     checkpoint_path,
     #     checkpoint_root_dir,
     #     model_fname,
     # )
+
+    # train from scratch
+    train_from_scratch(
+        data_module,
+        max_epochs,
+        logger,
+        devices,
+        accelerator,
+        checkpoint_root_dir,
+        model_fname,
+    )
