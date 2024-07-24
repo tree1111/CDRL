@@ -95,11 +95,11 @@ def add_main_args(parser):
     # training misc args
     parser.add_argument("--root_dir", type=str, default="./", help="Root directory")
     parser.add_argument("--seed", type=int, default=1234, help="random seed")
-    parser.add_argument("--max_epochs", type=int, default=10_000, help="Max epochs")
+    parser.add_argument("--max_epochs", type=int, default=20_000, help="Max epochs")
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
     return parser
 
@@ -260,6 +260,7 @@ if __name__ == "__main__":
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
     intervention_types = [None, 1, 2, 3]
+
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
     # intervention_types = [None]
@@ -271,9 +272,8 @@ if __name__ == "__main__":
     log_dir = args.log_dir
 
     devices = 1
-    n_jobs = 1
     num_workers = 10
-    print("Running with n_jobs:", n_jobs)
+    print("Running with n_jobs:", num_workers)
 
     # output filename for the results
     model_fname = f"vae-resnet-{graph_type}-seed={seed}-model.pt"
