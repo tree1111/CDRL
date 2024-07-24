@@ -14,7 +14,7 @@ import torch.nn as nn
 import torchvision
 from pl_bolts.models.autoencoders.components import resnet18_decoder, resnet18_encoder
 
-from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
+from gendis.datasets import CausalMNIST, MultiDistrDataModule
 from gendis.variational.vae import VAE
 
 
@@ -160,10 +160,11 @@ def train_from_scratch(
     accelerator,
     checkpoint_dir,
     model_fname,
+    latent_dim
 ):
     lr_scheduler = "cosine"
     lr_min = 1e-7
-    lr = 2e-5
+    lr = 1e-3
 
     channels = 3
     input_height = 32
@@ -203,7 +204,7 @@ def train_from_scratch(
 
     # 02: Define now the full pytorch lightning model
     model = VAE(
-        latent_dim=3,
+        latent_dim=latent_dim,
         encoder=encoder,
         decoder=decoder,
         encoder_out_dim=512,
@@ -254,6 +255,7 @@ if __name__ == "__main__":
     graph_type = "chain"
     adjacency_matrix = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
     latent_dim = len(adjacency_matrix)
+    latent_dim = 128
 
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
@@ -270,7 +272,7 @@ if __name__ == "__main__":
 
     devices = 1
     n_jobs = 1
-    num_workers = 4
+    num_workers = 10
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
@@ -299,38 +301,48 @@ if __name__ == "__main__":
     )
 
     # now we can wrap this in a pytorch lightning datamodule
-    data_module = ClusteredMultiDistrDataModule(
+    # data_module = ClusteredMultiDistrDataModule(
+    #     root=root,
+    #     graph_type=graph_type,
+    #     num_workers=num_workers,
+    #     batch_size=batch_size,
+    #     intervention_types=intervention_types,
+    #     transform=transform,
+    #     log_dir=log_dir,
+    #     flatten=False,
+    # )
+    data_module = MultiDistrDataModule(
         root=root,
+        stratify_distrs=True,
         graph_type=graph_type,
         num_workers=num_workers,
         batch_size=batch_size,
-        intervention_types=intervention_types,
         transform=transform,
         log_dir=log_dir,
-        flatten=False,
     )
-    # data_module.setup()
+    data_module.setup()
 
-    # train_from_scratch(
-    #     data_module,
-    #     max_epochs,
-    #     logger,
-    #     devices,
-    #     accelerator,
-    #     checkpoint_dir,
-    #     model_fname,
-    # )
-
-    epoch = 9988
-    step = 419538
-    checkpoint_path = checkpoint_dir / f"epoch={epoch}-step={step}.ckpt"
-    train_from_checkpoint(
+    train_from_scratch(
         data_module,
         max_epochs,
         logger,
         devices,
         accelerator,
-        checkpoint_path,
         checkpoint_dir,
         model_fname,
+        latent_dim=latent_dim
     )
+
+    # epoch = 9988
+    # step = 419538
+    # checkpoint_path = checkpoint_dir / f"epoch={epoch}-step={step}.ckpt"
+    # train_from_checkpoint(
+    #     data_module,
+    #     max_epochs,
+    #     logger,
+    #     devices,
+    #     accelerator,
+    #     checkpoint_path,
+    #     checkpoint_dir,
+    #     model_fname,
+    # )
