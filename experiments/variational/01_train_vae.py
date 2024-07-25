@@ -153,14 +153,7 @@ def train_from_checkpoint(
 
 
 def train_from_scratch(
-    data_module,
-    max_epochs,
-    logger,
-    devices,
-    accelerator,
-    checkpoint_dir,
-    model_fname,
-    latent_dim
+    data_module, max_epochs, logger, devices, accelerator, checkpoint_dir, model_fname, latent_dim
 ):
     lr_scheduler = "cosine"
     lr_min = 1e-7
@@ -330,7 +323,7 @@ if __name__ == "__main__":
         accelerator,
         checkpoint_dir,
         model_fname,
-        latent_dim=latent_dim
+        latent_dim=latent_dim,
     )
 
     # epoch = 9988

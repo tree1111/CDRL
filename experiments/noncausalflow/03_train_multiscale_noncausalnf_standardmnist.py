@@ -16,10 +16,12 @@ from torchvision.datasets import MNIST
 from gendis.datasets import ClusteredMultiDistrDataModule
 from gendis.noncausal.flows import (
     CouplingLayer,
+    Dequantization,
     GatedConvNet,
     Reshape,
     SplitFlow,
     SqueezeFlow,
+    VariationalDequantization,
     create_channel_mask,
     create_checkerboard_mask,
 )
@@ -40,18 +42,16 @@ class MNISTDataModule(pl.LightningDataModule):
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.transform = transform
-        self.default_transform = torchvision.transforms.Compose(
-            [
-                torchvision.transforms.ToTensor(),
-            ]
-        )
+        # self.default_transform = torchvision.transforms.Compose(
+        #     [
+        #         torchvision.transforms.ToTensor(),
+        #     ]
+        # )
 
     def setup(self, stage: str):
-        self.mnist_test = MNIST(
-            self.data_dir, download=True, train=False, transform=self.default_transform
-        )
+        self.mnist_test = MNIST(self.data_dir, download=True, train=False, transform=self.transform)
         self.mnist_predict = MNIST(
-            self.data_dir, download=True, train=False, transform=self.default_transform
+            self.data_dir, download=True, train=False, transform=self.transform
         )
         mnist_full = MNIST(self.data_dir, download=True, train=True, transform=self.transform)
         self.mnist_train, self.mnist_val = random_split(
@@ -113,6 +113,20 @@ def train_from_scratch(
     flow_layers = []
     n_flows = 4
     n_chs = 1
+
+    # add variational dequantization
+    vardeq_layers = [
+        CouplingLayer(
+            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
+            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+            c_in=n_chs,
+        )
+        for i in range(4)
+    ]
+    # flow_layers += vardeq_layers
+    flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+
+    # flow_layers += [Dequantization()]
     # first create a sequence of channel and checkerboard masking
     for i in range(n_flows):
         flow_layers += [
@@ -169,6 +183,8 @@ def train_from_scratch(
     # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     print("\n\nRunning forward direction...")
     output, ldj = torch.randn(5, n_chs, 28, 28), 0
+    output = output - output.min()
+    output = output / output.max() * 255
     for flow in flow_layers:
         output, ldj = flow(output, ldj)
         print("Running: ", type(flow), output.shape)
@@ -247,7 +263,6 @@ if __name__ == "__main__":
 
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
-    intervention_types = [None, 1, 2, 3]
     num_workers = 10
     gradient_clip_val = None  # 1.0
     batch_size = args.batch_size
@@ -257,7 +272,6 @@ if __name__ == "__main__":
 
     # root = "/Users/adam2392/pytorch_data/"
     # accelerator = "cpu"
-    # intervention_types = [None, 1]
     # num_workers = 1
     # batch_size = 10
     print(args)
@@ -272,8 +286,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_id_fname = f"nf-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
-    model_id_fname = f"nf-normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
+    model_id_fname = f"normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(f"nf-{model_id_fname}")
     model_fname = f"nf-{model_id_fname}-model.pt"
 
@@ -287,13 +300,18 @@ if __name__ == "__main__":
     random.seed(seed)
     pl.seed_everything(seed, workers=True)
 
+    # since MNIST images are in [0, 1], we need to discretize them
+    def discretize(sample):
+        return (sample * 255).to(torch.int32)
+
     # set up transforms for each image to augment the dataset
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
             # torchvision.transforms.Resize((32, 32)),
-            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
-            nf.utils.Jitter(1 / 256.0),  # apply random generation
+            # nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
+            # nf.utils.Jitter(1 / 256.0),  # apply random generation
+            discretize,
             torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )

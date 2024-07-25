@@ -11,7 +11,9 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
-from gendis.datasets import MultiDistrDataModule
+from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule, MultiDistrDataModule
+from gendis.encoder import CausalMultiscaleFlow
+from gendis.model import NeuralClusteredASCMFlow
 from gendis.noncausal.flows import (
     ActNorm,
     CouplingLayer,
@@ -23,14 +25,7 @@ from gendis.noncausal.flows import (
     create_checkerboard_mask,
 )
 from gendis.noncausal.model import ImageFlow
-
-
-def generate_list(x, n_clusters):
-    quotient = x // n_clusters
-    remainder = x % n_clusters
-    result = [quotient] * (n_clusters - 1)
-    result.append(quotient + remainder)
-    return result
+from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
 # initialize args
@@ -48,6 +43,14 @@ def add_main_args(parser):
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
     return parser
+
+
+def generate_list(x, n_clusters):
+    quotient = x // n_clusters
+    remainder = x % n_clusters
+    result = [quotient] * (n_clusters - 1)
+    result.append(quotient + remainder)
+    return result
 
 
 def train_from_checkpoint(
