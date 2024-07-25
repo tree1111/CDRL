@@ -315,27 +315,27 @@ if __name__ == "__main__":
     )
     data_module.setup()
 
-    train_from_scratch(
-        data_module,
-        max_epochs,
-        logger,
-        devices,
-        accelerator,
-        checkpoint_dir,
-        model_fname,
-        latent_dim=latent_dim,
-    )
-
-    # epoch = 9988
-    # step = 419538
-    # checkpoint_path = checkpoint_dir / f"epoch={epoch}-step={step}.ckpt"
-    # train_from_checkpoint(
+    # train_from_scratch(
     #     data_module,
     #     max_epochs,
     #     logger,
     #     devices,
     #     accelerator,
-    #     checkpoint_path,
     #     checkpoint_dir,
     #     model_fname,
+    #     latent_dim=latent_dim,
     # )
+
+    epoch = 7731
+    step = 1082480
+    checkpoint_path = checkpoint_dir / f"epoch={epoch}-step={step}.ckpt"
+    train_from_checkpoint(
+        data_module,
+        max_epochs,
+        logger,
+        devices,
+        accelerator,
+        checkpoint_path,
+        checkpoint_dir,
+        model_fname,
+    )

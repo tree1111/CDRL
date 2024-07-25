@@ -5,6 +5,42 @@ import torch.nn.functional as F
 from normflows.flows import AffineConstFlow, Flow
 
 
+class UniformDequantization(nn.Module):
+    def __init__(self, n_samples):
+        """
+        Uniform dequantization. See section 3.1 here https://arxiv.org/pdf/1511.01844.pdf
+        Args:
+            n_samples: Number of noise samples to draw.
+        """
+        super().__init__()
+
+        self.n_samples = n_samples
+
+    def get_params(self):
+        return {}
+
+    def forward(self, x, ldj, reverse=False):
+        if not reverse:
+            noise = torch.rand(x.shape + (self.n_samples,))  # Uniform noise
+            noise = noise.mean(dim=-1)  # Bates distribution
+            print(x.shape, noise.shape)
+            z = x + noise
+
+            # noise = torch.rand(x.shape + (self.n_samples,))  # Uniform noise
+            # noise = noise.mean(dim=-1)  # Bates distribution
+            # noise = noise.mean(dim=1)  # Bates distribution
+            # print(x.shape, noise.shape)
+            # z = torch.zeros_like(x)
+            # for ch in range(x.shape[1]):
+            #     z[:, ch, ...] = x[:, ch, ...] + noise
+        else:
+            z = torch.floor(x)
+
+        log_det = torch.zeros(x.shape[0])  # Assuming the first dimension is batch size
+        return z, log_det
+
+
+
 class Dequantization(nn.Module):
     def __init__(self, alpha=1e-5, quants=256):
         """
