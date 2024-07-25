@@ -286,7 +286,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_id_fname = f"normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
+    model_id_fname = f"vardeq-discretize-normalMNIST-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(f"nf-{model_id_fname}")
     model_fname = f"nf-{model_id_fname}-model.pt"
 

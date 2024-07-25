@@ -3,7 +3,7 @@
 # Directory containing the Python script
 SCRIPT_NAME="01_train_noncausalnf.py"
 SCRIPT_NAME="02_train_multiscale_noncausalnf.py"
-# SCRIPT_NAME="03_train_multiscale_noncausalnf_standardmnist.py"
+SCRIPT_NAME="03_train_multiscale_noncausalnf_standardmnist.py"
 LOG_DIR="/home/adam2392/projects/logs/"
 
 # Number of GPUs available
