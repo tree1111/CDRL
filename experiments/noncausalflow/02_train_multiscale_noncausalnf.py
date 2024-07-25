@@ -20,6 +20,7 @@ from gendis.noncausal.flows import (
     SplitFlow,
     SqueezeFlow,
     create_channel_mask,
+    VariationalDequantization,
     create_checkerboard_mask,
 )
 from gendis.noncausal.model import ImageFlow
@@ -119,10 +120,22 @@ def train_from_scratch(
     use_vardeq = True
 
     # Define the distributions
-    noiseq0 = nf.distributions.DiagGaussian(shape=(784 * 3,))
-
     flow_layers = []
     n_flows = 4
+
+    # add variational dequantization
+    n_chs = 3
+    vardeq_layers = [
+        CouplingLayer(
+            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
+            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+            c_in=n_chs,
+        )
+        for i in range(4)
+    ]
+    # flow_layers += vardeq_layers
+    flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+
     # first create a sequence of channel and checkerboard masking
     for i in range(n_flows):
         flow_layers += [
@@ -185,6 +198,9 @@ def train_from_scratch(
     # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     print("\n\nRunning forward direction...")
     output, ldj = torch.randn(batch_size, 3, 28, 28), 0
+    # output
+    output = output - output.min()
+    output = output / output.max() * 255
     for idx, flow in enumerate(flow_layers):
         # try:
         #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
@@ -294,7 +310,7 @@ if __name__ == "__main__":
         f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     model_fname = (
-        f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
+        f"nf-vardeq-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}-model.pt"
     )
 
     # set up logging

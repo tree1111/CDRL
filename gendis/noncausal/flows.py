@@ -40,7 +40,6 @@ class UniformDequantization(nn.Module):
         return z, log_det
 
 
-
 class Dequantization(nn.Module):
     def __init__(self, alpha=1e-5, quants=256):
         """

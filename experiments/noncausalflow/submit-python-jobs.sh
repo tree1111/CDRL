@@ -36,7 +36,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  LOG_FILE="output_normalmnist_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
+  # LOG_FILE="output_normalmnist_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
   LOG_FILE="output_vaedeq_actnorm_3POINT1M_COSINELR_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
   nohup $CMD > $LOG_FILE 2>&1 &
 
