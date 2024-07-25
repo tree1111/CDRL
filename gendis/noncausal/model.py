@@ -101,11 +101,15 @@ class ImageFlow(pl.LightningModule):
         # Normalizing flows are trained by maximum likelihood => return bpd
         loss = self._get_likelihood(batch[0])
         self.log("train_bpd", loss)
+        self.log('This trianing does occur', 0)
         return loss
 
     def validation_step(self, batch, batch_idx):
+        print('WTF. THIS SHOULD OCCUR')
         loss = self._get_likelihood(batch[0])
+        self.log('This should occur', 0)
         self.log("val_bpd", loss)
+        return loss
 
     def test_step(self, batch, batch_idx):
         # Perform importance sampling during testing => estimate likelihood M times for each image
@@ -124,3 +128,4 @@ class ImageFlow(pl.LightningModule):
         bpd = bpd.mean()
 
         self.log("test_bpd", bpd)
+        return bpd
