@@ -124,7 +124,7 @@ def train_from_scratch(
     input_shape = (3, 28, 28)
     channels = 3
     use_vardeq = True
-    normalize = False
+    normalize = True
 
     # Define the distributions
     flow_layers = []
