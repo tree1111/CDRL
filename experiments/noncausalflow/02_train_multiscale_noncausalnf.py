@@ -130,16 +130,15 @@ def train_from_scratch(
 
     # add variational dequantization
     n_chs = 3
-    vardeq_layers = [
-        CouplingLayer(
-            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
-            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-            c_in=n_chs,
-        )
-        for i in range(4)
-    ]
-    # flow_layers += vardeq_layers
-    flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+    # vardeq_layers = [
+    #     CouplingLayer(
+    #         network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
+    #         mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+    #         c_in=n_chs,
+    #     )
+    #     for i in range(4)
+    # ]
+    # flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
 
     # first create a sequence of channel and checkerboard masking
     for i in range(n_flows):
@@ -314,7 +313,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"nf-vardeq-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
