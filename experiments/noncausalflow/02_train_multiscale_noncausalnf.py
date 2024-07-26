@@ -21,6 +21,7 @@ from gendis.noncausal.flows import (
     SplitFlow,
     SqueezeFlow,
     create_channel_mask,
+    Invertible1x1Conv,
     VariationalDequantization,
     create_checkerboard_mask,
 )
@@ -123,6 +124,7 @@ def train_from_scratch(
     input_shape = (3, 28, 28)
     channels = 3
     use_vardeq = True
+    normalize = False
 
     # Define the distributions
     flow_layers = []
@@ -130,15 +132,16 @@ def train_from_scratch(
 
     # add variational dequantization
     n_chs = 3
-    # vardeq_layers = [
-    #     CouplingLayer(
-    #         network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
-    #         mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-    #         c_in=n_chs,
-    #     )
-    #     for i in range(4)
-    # ]
-    # flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
+    vardeq_layers = [
+        CouplingLayer(
+            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
+            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
+            c_in=n_chs,
+        )
+        for i in range(4)
+    ]
+    if use_vardeq:
+        flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
 
     # first create a sequence of channel and checkerboard masking
     for i in range(n_flows):
@@ -155,50 +158,70 @@ def train_from_scratch(
                 mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
                 c_in=3,
             )
-        ]
-        # input the shape of the coupling layer
-        flow_layers += [ActNorm((3, 1, 1))]
+        ]  
+
+        if normalize:
+            flow_layers += [Invertible1x1Conv(n_chs, False)]
+            # input the shape of the coupling layer
+            flow_layers += [ActNorm((3, 1, 1))]
     flow_layers += [SqueezeFlow()]
+    n_chs_now = n_chs * 4  # now 12 = 3 * 4
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=12, c_hidden=32),
-                mask=create_channel_mask(c_in=12, invert=(i % 2 == 1)),
-                c_in=12,
+                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
+                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
+                c_in=n_chs_now,
             )
         ]
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=12, c_hidden=32),
+                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
                 mask=create_checkerboard_mask(h=14, w=14, invert=(i % 2 == 1)),
-                c_in=12,
+                c_in=n_chs_now,
             )
         ]
-        # input the shape of the coupling layer
-        flow_layers += [ActNorm((3, 1, 1))]
+
+        if normalize:
+            flow_layers += [Invertible1x1Conv(n_chs_now, False)]
+            # input the shape of the coupling layer
+            flow_layers += [ActNorm((n_chs_now, 1, 1))]
 
     flow_layers += [SplitFlow(), SqueezeFlow()]
+    n_chs_now = n_chs_now * 4 // 2  # now 24 = 12 * 4 // 2
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=24, c_hidden=48),
-                mask=create_channel_mask(c_in=24, invert=(i % 2 == 1)),
-                c_in=24,
+                network=GatedConvNet(c_in=n_chs_now, c_hidden=48),
+                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
+                c_in=n_chs_now,
             )
         ]
-        # input the shape of the coupling layer
-        flow_layers += [ActNorm((3, 1, 1))]
+        
+        if normalize:
+            # input the shape of the coupling layer
+            # Invertible 1x1 convolution
+            if n_chs_now > 1:
+                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
+            flow_layers += [ActNorm((n_chs_now, 1, 1))]
+    
     flow_layers += [SplitFlow()]
+    n_chs_now = n_chs_now // 2  # now 12 = 24 // 2
     for i in range(n_flows):
         flow_layers += [
             CouplingLayer(
-                network=GatedConvNet(c_in=12, c_hidden=64),
-                mask=create_channel_mask(c_in=12, invert=(i % 2 == 1)),
-                c_in=12,
+                network=GatedConvNet(c_in=n_chs_now, c_hidden=64),
+                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
+                c_in=n_chs_now,
             )
         ]
-        # input the shape of the coupling layer
-        flow_layers += [ActNorm((3, 1, 1))]
+
+        if normalize:
+            if n_chs_now > 1:
+                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
+            # input the shape of the coupling layer
+            flow_layers += [ActNorm((n_chs_now, 1, 1))]
+
     # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     print("\n\nRunning forward direction...")
     output, ldj = torch.randn(batch_size, 3, 28, 28), 0
@@ -296,11 +319,11 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 1e-3
 
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "cpu"
-    # intervention_types = [None, 1]
-    # num_workers = 1
-    # batch_size = 10
+    root = "/Users/adam2392/pytorch_data/"
+    accelerator = "cpu"
+    intervention_types = [None, 1]
+    num_workers = 1
+    batch_size = 10
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -313,7 +336,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = f"nf-vardeq-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
