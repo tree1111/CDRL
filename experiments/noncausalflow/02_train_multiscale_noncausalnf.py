@@ -124,7 +124,7 @@ def train_from_scratch(
     input_shape = (3, 28, 28)
     channels = 3
     use_vardeq = True
-    normalize = False
+    normalize = True
 
     # Define the distributions
     flow_layers = []
@@ -319,11 +319,11 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 1e-3
 
-    root = "/Users/adam2392/pytorch_data/"
-    accelerator = "cpu"
-    intervention_types = [None, 1]
-    num_workers = 1
-    batch_size = 10
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
+    # num_workers = 1
+    # batch_size = 10
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"nf-vardeq-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = f"nf-vardeq-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
