@@ -449,9 +449,7 @@ class Invertible1x1Conv(Flow):
             S = U.diag()  # "crop out" the diagonal to its own parameter
             self.register_buffer("sign_S", torch.sign(S))
             self.log_S = nn.Parameter(torch.log(torch.abs(S)))
-            self.U = nn.Parameter(
-                torch.triu(U, diagonal=1)
-            )  # "crop out" diagonal, stored in S
+            self.U = nn.Parameter(torch.triu(U, diagonal=1))  # "crop out" diagonal, stored in S
             self.register_buffer("eye", torch.diag(torch.ones(self.num_channels)))
         else:
             self.W = nn.Parameter(Q)
@@ -459,9 +457,7 @@ class Invertible1x1Conv(Flow):
     def _assemble_W(self, inverse=False):
         # assemble W from its components (P, L, U, S)
         L = torch.tril(self.L, diagonal=-1) + self.eye
-        U = torch.triu(self.U, diagonal=1) + torch.diag(
-            self.sign_S * torch.exp(self.log_S)
-        )
+        U = torch.triu(self.U, diagonal=1) + torch.diag(self.sign_S * torch.exp(self.log_S))
         if inverse:
             if self.log_S.dtype == torch.float64:
                 L_inv = torch.inverse(L)
@@ -489,13 +485,13 @@ class Invertible1x1Conv(Flow):
                 log_det = -torch.slogdet(self.W)[1]
             W = W.view(self.num_channels, self.num_channels, 1, 1)
             z_ = torch.nn.functional.conv2d(z, W)
-            log_det = log_det *  z.size(2) * z.size(3)
+            log_det = log_det * z.size(2) * z.size(3)
 
             ldj += torch.sum(log_det, -1)
             return z_, ldj
         else:
             return self.inverse(z, ldj)
-        
+
     def inverse(self, z, ldj):
         if self.use_lu:
             W = self._assemble_W()

@@ -1,4 +1,4 @@
-# Training of a RealNVP model on the MNIST dataset with independent high-dimensional factors
+# Using the normflows package, train a normaliznig flow model on a dataset of colored images.# Training of a RealNVP model on the MNIST dataset with independent high-dimensional factors
 # as the independent noise variables, which do not change with respect to each dataset.
 import argparse
 import logging
@@ -13,19 +13,7 @@ import torchvision
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from gendis.datasets import MultiDistrDataModule
-from gendis.noncausal.flows import (
-    ActNorm,
-    CouplingLayer,
-    GatedConvNet,
-    Invertible1x1Conv,
-    Reshape,
-    SplitFlow,
-    SqueezeFlow,
-    VariationalDequantization,
-    create_channel_mask,
-    create_checkerboard_mask,
-)
-from gendis.noncausal.model import ImageFlow
+from gendis.noncausal.modelv2 import MultiscaleGlowFlow
 
 
 def generate_list(x, n_clusters):
@@ -67,7 +55,7 @@ def train_from_checkpoint(
     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     current_max_epochs = checkpoint["epoch"]
     max_epochs += current_max_epochs
-    model = ImageFlow.load_from_checkpoint(checkpoint_path)
+    # model = ImageFlow.load_from_checkpoint(checkpoint_path)
 
     # 04b: Define the trainer for the model
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
@@ -102,6 +90,62 @@ def train_from_checkpoint(
     torch.save(model, checkpoint_dir / model_fname)
 
 
+def make_model():
+    # Define flows
+    L = 2
+    K = 32
+
+    input_shape = (3, 28, 28)
+    channels = 3
+    n_chs_now = 3
+    hidden_channels = 256
+    split_mode = "channel"
+    # split_mode = "checkerboard"
+    scale = True
+
+    # Set up flows, distributions and merge operations
+    q0 = []
+    merges = []
+    flows = []
+
+    # add flows in from the prior to the output
+    for i in range(L):
+        flows_ = []
+        n_chs_now = channels * 2 ** (L + 1 - i)  # x 4 per time
+        for j in range(K):
+            flows_ += [
+                nf.flows.GlowBlock(
+                    n_chs_now,
+                    hidden_channels,
+                    split_mode=split_mode,
+                    scale=scale,
+                )
+            ]
+        flows_ += [nf.flows.Squeeze()]
+        flows += [flows_]
+        if i > 0:
+            merges += [nf.flows.Merge()]
+            latent_shape = (
+                input_shape[0] * 2 ** (L - i),
+                input_shape[1] // 2 ** (L - i),
+                input_shape[2] // 2 ** (L - i),
+            )
+        else:
+            latent_shape = (
+                input_shape[0] * 2 ** (L + 1),
+                input_shape[1] // 2**L,
+                input_shape[2] // 2**L,
+            )
+        q0 += [nf.distributions.DiagGaussian(latent_shape)]
+        print(f"\n\n At Layer {L - i}")
+        print(n_chs_now)
+        print(latent_shape)
+
+    # Construct flow model with the multiscale architecture
+    model = nf.MultiscaleFlow(q0, flows, merges)
+    return model
+
+
 def train_from_scratch(
     data_module,
     max_epochs,
@@ -110,117 +154,17 @@ def train_from_scratch(
     checkpoint_dir,
     model_fname,
 ):
+    lr_scheduler = "cosine"
+    lr_min = 1e-7
+    lr = 1e-3
+
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
     logging.info(f"\n\n\tsaving to {model_fname} \n")
 
-    intervention_targets_per_distr = data_module.dataset.intervention_targets
-    hard_interventions_per_distr = None
-
-    graph = adjacency_matrix
-    cluster_sizes = generate_list(784 * 3, 3)
-    cluster_sizes = None
-    input_shape = (3, 28, 28)
-    channels = 3
-    use_vardeq = False
-    normalize = True
-
     # Define the distributions
     flow_layers = []
-    n_flows = 4
-
-    # add variational dequantization
-    n_chs = 3
-    vardeq_layers = [
-        CouplingLayer(
-            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
-            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-            c_in=n_chs,
-        )
-        for i in range(4)
-    ]
-    if use_vardeq:
-        flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
-
-    # first create a sequence of channel and checkerboard masking
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=24),
-                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-        ]
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=24),
-                mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-        ]
-
-        if normalize:
-            flow_layers += [Invertible1x1Conv(n_chs, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((3, 1, 1))]
-    flow_layers += [SqueezeFlow()]
-    n_chs_now = n_chs * 4  # now 12 = 3 * 4
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
-                mask=create_checkerboard_mask(h=14, w=14, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
-
-    flow_layers += [SplitFlow(), SqueezeFlow()]
-    n_chs_now = n_chs_now * 4 // 2  # now 24 = 12 * 4 // 2
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=48),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            # input the shape of the coupling layer
-            # Invertible 1x1 convolution
-            if n_chs_now > 1:
-                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
-
-    flow_layers += [SplitFlow()]
-    n_chs_now = n_chs_now // 2  # now 12 = 24 // 2
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=64),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            if n_chs_now > 1:
-                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
 
     # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
     print("\n\nRunning forward direction...")
@@ -247,20 +191,16 @@ def train_from_scratch(
     # for flow in reversed(self.flows):
     #     z, ldj = flow(z, ldj, reverse=True)
 
-    model = ImageFlow(
-        flow_layers,
-        lr=lr,
-        lr_min=lr_min,
-        lr_scheduler=lr_scheduler,
-    )
+    glow_flow = make_model()
+    model = MultiscaleGlowFlow(model=glow_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
     # print(output.shape)
     # print('\n\n Now running reverse')
     # for flow in reversed(flow_layers):
     #     output, ldj = flow(output, ldj, reverse=True)
     #     print("Running: ", type(flow), output.shape)
     # prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
-    output = model.sample((5, 12, 7, 7))
-    print(output.shape)
+    output, ldj = model.sample(num_samples=16)
+    print(output.shape, ldj.shape)
 
     # 04b: Define the trainer for the model
     checkpoint_dir = Path(checkpoint_root_dir)
@@ -336,7 +276,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = f"nf-glowblocks-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
