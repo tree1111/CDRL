@@ -275,11 +275,11 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 1e-3
 
-    root = "/Users/adam2392/pytorch_data/"
-    accelerator = "cpu"
-    intervention_types = [None, 1]
-    num_workers = 1
-    batch_size = 10
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "cpu"
+    # intervention_types = [None, 1]
+    # num_workers = 1
+    # batch_size = 10
     print(args)
     # root = args.root_dir
     seed = args.seed
