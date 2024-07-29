@@ -45,6 +45,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         cluster_sizes: np.ndarray,
         intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
+        input_shape=None,
         fix_mechanisms: bool = False,
         use_matrix: bool = False,
     ):
@@ -89,6 +90,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.intervention_targets_per_distr = intervention_targets_per_distr
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.use_matrix = use_matrix
+        self.input_shape = input_shape
 
         if cluster_sizes is None:
             cluster_sizes = [1] * adjacency_matrix.shape[0]
@@ -235,6 +237,10 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 .log_prob(samples[:, cluster_idx])
                 .mean(axis=1)
             )
+
+        # reshape for the rest of the flow
+        if self.input_shape is not None:
+            samples = samples.view(num_samples, *self.input_shape)
         return samples, log_p
 
     def log_prob(
@@ -261,6 +267,12 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         log_p : Tensor of shape (n_distributions, 1)
             The log probability of the latent variables in each distribution.
         """
+        if self.input_shape is not None:
+            n_batch = v_latent.shape[0]
+
+            # flatten representation
+            v_latent = v_latent.view(n_batch, np.prod(self.input_shape))
+
         log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
         latent_dim = v_latent.shape[1]
         if hard_interventions is None:

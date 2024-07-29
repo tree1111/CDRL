@@ -267,6 +267,15 @@ class CausalBarMNIST(Dataset):
         ):
             raise ValueError("Data, labels and intervention targets must have the same length.")
 
+    @property
+    def intervention_targets_per_distr(self):
+        return [
+            [0, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0],
+            [1, 0, 0],
+        ]
+
     def __len__(self):
         return len(self.data)
 
