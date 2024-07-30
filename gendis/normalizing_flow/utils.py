@@ -103,8 +103,8 @@ def set_initial_edge_coeffs(
     coeff_values_requires_grad : list[list[bool]]]
         Whether each coefficient requires a gradient to update it or not.
     """
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # if device is None:
+    #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     coeff_values = []
     coeff_values_requires_grad = []
@@ -122,7 +122,7 @@ def set_initial_edge_coeffs(
             if cluster_mapping is None:
                 random_val = Uniform(min_val, max_val).sample((1,))
                 val = random_val
-                param = nn.Parameter(val * torch.ones(1), requires_grad=True).to(device)
+                param = nn.Parameter(val * torch.ones(1), requires_grad=True)  # .to(device)
             elif cluster_mapping is not None and use_matrix:
                 if len(cluster_mapping[idx]) != len(cluster_mapping[pa_idx]):
                     raise ValueError(
@@ -132,19 +132,19 @@ def set_initial_edge_coeffs(
                     )
                 # sample a random invertible matrix
                 matrix = sample_invertible_matrix(cluster_size, min_val, max_val)
-                param = nn.Parameter(matrix, requires_grad=True).to(device)
+                param = nn.Parameter(matrix, requires_grad=True)  # .to(device)
             else:
                 # sample a random vector with each value between min_val and max_val
                 vector = (max_val - min_val) * torch.rand((cluster_size,)) + min_val
-                param = nn.Parameter(vector, requires_grad=True).to(device)
+                param = nn.Parameter(vector, requires_grad=True)  # .to(device)
 
             coeff_values_i.append(param)
             coeff_values_requires_grad_i.append(True)
 
         if cluster_mapping is None:
-            const = torch.ones(1, requires_grad=False).to(device)  # variance param
+            const = torch.ones(1, requires_grad=False)  # .to(device)  # variance param
         else:
-            const = nn.Parameter(torch.ones(cluster_size, requires_grad=False).to(device))
+            const = nn.Parameter(torch.ones(cluster_size, requires_grad=False))  # .to(device)
 
         coeff_values_i.append(const)
         coeff_values_requires_grad_i.append(False)
@@ -200,8 +200,8 @@ def set_initial_noise_parameters(
     noise_params_requires_grad : list[list[bool]]]
         Whether each noise mean/std requires a gradient to update it or not.
     """
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # if device is None:
+    #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if n_dim_per_node is None:
         n_dim_per_node = [1] * dag.number_of_nodes()
 
@@ -230,9 +230,9 @@ def set_initial_noise_parameters(
 
             # initialize the means
             random_val = Uniform(min_val, max_val).sample((n_dims,))
-            params = (nn.Parameter(random_val * torch.ones(1), requires_grad=not is_fixed)).to(
-                device
-            )
+            params = nn.Parameter(
+                random_val * torch.ones(1), requires_grad=not is_fixed
+            )  # .to(device)
             noise_means_e.append(params)
             noise_means_requires_grad_e.append(not is_fixed)
         noise_params.append(nn.ParameterList(noise_means_e))

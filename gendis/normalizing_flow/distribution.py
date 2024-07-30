@@ -108,7 +108,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             self.dag.number_of_nodes() if self.cluster_sizes is None else np.sum(self.cluster_sizes)
         )
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # parametrize the trainable coefficients for the linear mechanisms
         # this will be a full matrix of coefficients for each variable in the DAG
@@ -118,9 +118,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             max_val=1.0,
             cluster_mapping=self.cluster_mapping,
             use_matrix=self.use_matrix,
-            device=device,
+            # device=device,
         )
-        environments = torch.ones(intervention_targets_per_distr.shape[0], 1, device=device)
+        environments = torch.ones(
+            intervention_targets_per_distr.shape[0],
+            1,
+            #   device=device
+        )
 
         # parametrize the trainable means for the noise distributions
         # for each separate distribution
@@ -132,7 +136,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             n_dim_per_node=cluster_sizes,
             min_val=-0.5,
             max_val=0.5,
-            device=device,
+            # device=device,
         )
 
         # parametrize the trainable standard deviations for the noise distributions
@@ -145,7 +149,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             environments=environments,
             min_val=0.5,
             max_val=1.5,
-            device=device,
+            # device=device,
         )
 
         self.coeff_values = nn.ParameterList(coeff_values)
@@ -174,13 +178,19 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         if intervention_targets is None:
             intervention_targets = torch.zeros_like(hard_interventions)
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # return (num_samples, latent_dim) samples from the distribution
-        samples = torch.zeros((num_samples, self.latent_dim), device=device)
+        samples = torch.zeros(
+            (num_samples, self.latent_dim)
+            #   , device=device
+        )
 
         # return the log probability of the samples
-        log_p = torch.zeros(num_samples, device=device)
+        log_p = torch.zeros(
+            num_samples,
+            # device=device
+        )
 
         # start from observational environment
         noise_env_idx = 0
@@ -208,7 +218,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 coeffs_raw = self.coeff_values[idx][:-1]
                 if isinstance(coeffs_raw, nn.ParameterList):
                     coeffs_raw = torch.cat([c for c in coeffs_raw])
-                parent_coeffs = coeffs_raw.to(device)
+                parent_coeffs = coeffs_raw  # .to(device)
                 parent_contribution = parent_coeffs * samples[:, parent_cluster_idx]
 
                 # compute the contribution of the noise
@@ -218,7 +228,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
             # XXX: compute the contributions of the confounders
 
-            noise_coeff = self.coeff_values[idx][-1].to(device)
+            noise_coeff = self.coeff_values[idx][-1]  # .to(device)
             noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
             var *= noise_coeff**2
             var *= noise_coeff**2
@@ -273,7 +283,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             # flatten representation
             v_latent = v_latent.view(n_batch, np.prod(self.input_shape))
 
-        log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
+        log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype)  # , device=v_latent.device
         latent_dim = v_latent.shape[1]
         if hard_interventions is None:
             hard_interventions = torch.zeros_like(intervention_targets)
@@ -312,7 +322,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                     if isinstance(coeffs_raw, nn.ParameterList):
                         coeffs_raw = torch.cat([c for c in coeffs_raw])
 
-                    parent_coeffs = coeffs_raw.to(v_latent.device)
+                    parent_coeffs = coeffs_raw  # .to(v_latent.device)
                     parent_contribution = parent_coeffs * v_env[:, parent_cluster_idx]
 
                     # compute the contribution of the noise
@@ -322,7 +332,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # XXX: compute the contributions of the confounders
 
-                noise_coeff = self.coeff_values[idx][-1].to(v_latent.device)
+                noise_coeff = self.coeff_values[idx][-1]  # .to(v_latent.device)
                 noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
                 var *= noise_coeff**2
 
@@ -407,7 +417,7 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
         # 1. Do we intervene by perturbing the exogenous distribution?
         # 2. Do we intervene by perturbing the latent variables in the NonParametricBaseDistribution?
         #   - it is unclear
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # for intervention, we shift either the mean or scale of the distribution from
         # the standard normal distribution
@@ -417,7 +427,9 @@ class MultiEnvBaseDistribution(nf.distributions.BaseDistribution):
             mean += mean_shift
         if std_scale is not None:
             std *= std_scale
-        eps = torch.normal(mean=mean, std=std, size=(num_samples, self.latent_dim), device=device)
+        eps = torch.normal(
+            mean=mean, std=std, size=(num_samples, self.latent_dim)  # , device=device
+        )
 
         # apply a temperature to the log scaling
         log_scale = nn.Parameter(torch.zeros(1, *self.shape))
@@ -507,7 +519,7 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
     ):
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # return (num_samples, latent_dim) samples from the distribution
         # samples = torch.zeros((num_samples, self.latent_dim), device=device)
@@ -587,7 +599,11 @@ class NonparametricClusteredCausalDistribution(nf.NormalizingFlow):
         u : Tensor of shape (n_distributions, n_clusters)
             The latent variables before applying the flow transformations.
         """
-        log_q = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
+        log_q = torch.zeros(
+            len(v_latent),
+            dtype=v_latent.dtype,
+            #  device=v_latent.device
+        )
         u = v_latent
         for i in range(len(self.flows) - 1, -1, -1):
             u, log_det = self.flows[i].inverse(u)
@@ -657,7 +673,9 @@ def intervention_target_to_cluster_target(
         The intervention targets for each variable in each distribution.
     """
     cluster_targets = torch.zeros(
-        intervention_targets.shape[0], np.sum(cluster_sizes), device=intervention_targets.device
+        intervention_targets.shape[0],
+        np.sum(cluster_sizes),
+        # device=intervention_targets.device
     )
     start = 0
     for idx, cluster_size in enumerate(cluster_sizes):

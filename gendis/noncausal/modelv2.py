@@ -70,7 +70,7 @@ class MultiscaleFlow(nn.Module):
         Returns:
             Observed variable x, log determinant of Jacobian
         """
-        log_det = torch.zeros(len(z[0]), dtype=z[0].dtype, device=z[0].device)
+        log_det = torch.zeros(len(z[0]), dtype=z[0].dtype)
         for i in range(len(self.q0)):
             if i == 0:
                 z_ = z[0]
@@ -94,7 +94,7 @@ class MultiscaleFlow(nn.Module):
         Returns:
             List of latent variables z, log determinant of Jacobian
         """
-        log_det = torch.zeros(len(x), dtype=x.dtype, device=x.device)
+        log_det = torch.zeros(len(x), dtype=x.dtype)
         if self.transform is not None:
             x, log_det_ = self.transform.inverse(x)
             log_det += log_det_
