@@ -342,7 +342,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                     torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
                     .log_prob(v_env[:, cluster_idx])
                     .sum(axis=1)
-                )
+                ).to(log_p.device)
 
                 log_p[env_mask] += log_p_distr
 
