@@ -178,7 +178,7 @@ class MultiscaleFlow(nn.Module):
                         intervention_targets=intervention_targets,
                         e=distr_idx,
                         hard_interventions=hard_interventions,
-                    )
+                    ).to(z_.device)
                 else:
                     log_q += self.q0[i].log_prob(z_)
         return log_q

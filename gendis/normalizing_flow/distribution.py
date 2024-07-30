@@ -290,6 +290,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
         for env in e.unique():
             env_mask = (e == env).flatten()
+            env_mask = env_mask.to(log_p.device)
 
             v_env = v_latent[env_mask, :]
             intervention_targets_env = intervention_targets[env_mask, :]
