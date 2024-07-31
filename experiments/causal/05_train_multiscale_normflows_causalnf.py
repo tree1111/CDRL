@@ -94,7 +94,7 @@ def train_from_checkpoint(
 def make_model(adjacency_matrix, intervention_targets_per_distr):
     # Define flows
     L = 2
-    K = 32
+    K_list = [32, 2]
 
     input_shape = (3, 28, 28)
     channels = 3
@@ -113,7 +113,7 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
     for i in range(L):
         flows_ = []
         n_chs_now = channels * 2 ** (L + 1 - i)  # x 4 per time
-        for j in range(K):
+        for j in range(K_list[i]):
             flows_ += [
                 nf.flows.GlowBlock(
                     n_chs_now,

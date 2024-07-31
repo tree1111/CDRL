@@ -110,7 +110,7 @@ class MultiscaleFlow(nn.Module):
                 log_det += log_det_
         return z, log_det
 
-    def sample(self, num_samples=1, y=None, temperature=None):
+    def sample_with_prior(self, prior_samples, log_prob=None, temperature=None):
         """Samples from flow-based approximate distribution
 
         Args:
@@ -123,11 +123,16 @@ class MultiscaleFlow(nn.Module):
         """
         if temperature is not None:
             self.set_temperature(temperature)
+        
+        log_q_ = 0.0
+
         for i in range(len(self.q0)):
-            if self.class_cond:
-                z_, log_q_ = self.q0[i](num_samples, y)
-            else:
-                z_, log_q_ = self.q0[i](num_samples)
+            if log_prob is not None:
+                log_q_ += log_prob[i]
+
+            # use the existing priors
+            z_ = prior_samples[i]
+
             if i == 0:
                 log_q = log_q_
                 z = z_
@@ -143,6 +148,51 @@ class MultiscaleFlow(nn.Module):
             log_q -= log_det
         if temperature is not None:
             self.reset_temperature()
+        return z, log_q
+
+    def sample(self, num_samples=1, y=None, temperature=None, return_prior=False):
+        """Samples from flow-based approximate distribution
+
+        Args:
+          num_samples: Number of samples to draw
+          y: Classes to sample from, will be sampled uniformly if None
+          temperature: Temperature parameter for temp annealed sampling
+
+        Returns:
+          Samples, log probability
+        """
+        if temperature is not None:
+            self.set_temperature(temperature)
+        prior_samples = []
+        prior_ldj = []
+        for i in range(len(self.q0)):
+            if self.class_cond:
+                z_, log_q_ = self.q0[i](num_samples, y)
+            else:
+                print('Sampling from...', self.q0[i].__class__.__name__)
+                z_, log_q_ = self.q0[i](num_samples)
+
+            if return_prior:
+                prior_samples.append(z_)
+                prior_ldj.append(log_q_)
+            if i == 0:
+                log_q = log_q_
+                z = z_
+            else:
+                log_q += log_q_
+                z, log_det = self.merges[i - 1]([z, z_])
+                log_q -= log_det
+            for flow in self.flows[i]:
+                z, log_det = flow(z)
+                log_q -= log_det
+        if self.transform is not None:
+            z, log_det = self.transform(z)
+            log_q -= log_det
+        if temperature is not None:
+            self.reset_temperature()
+
+        if return_prior:
+            return z, log_q, prior_samples, prior_ldj
         return z, log_q
 
     def log_prob(self, x, y, intervention_targets=None, distr_idx=None, hard_interventions=None):
@@ -239,11 +289,11 @@ class MultiscaleGlowFlow(pl.LightningModule):
         self.lr_min = lr_min
 
     @torch.no_grad()
-    def sample(self, num_samples=1):
+    def sample(self, num_samples=1, **params):
         """
         Sample a batch of images from the flow.
         """
-        return self.model.sample(num_samples=num_samples)
+        return self.model.sample(num_samples=num_samples, **params)
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.lr)

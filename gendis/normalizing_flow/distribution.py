@@ -162,6 +162,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
     def forward(
         self, num_samples=1, intervention_targets: Tensor = None, hard_interventions: Tensor = None
     ):
+        """Sample from the distribution."""
         if intervention_targets is not None:
             if intervention_targets.squeeze().shape[0] != self.dag.number_of_nodes():
                 raise ValueError(
