@@ -122,6 +122,7 @@ if __name__ == "__main__":
     print(x.shape, labels.shape, targets.shape)
     with torch.no_grad():
         images = model.decoder(x)
+    images = model.scale_image(images)
     save_image(
         images,
         "samples.png",
