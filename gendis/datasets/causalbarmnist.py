@@ -38,6 +38,20 @@ def add_bar(img, color_bar_val=255, start_height=0, height=3, start_width=0, wid
         )
     return img
 
+def value_to_rgb(value, methods=None, cmap=None):
+    # Map to RGB components
+    if methods == 'cmap':
+        color_value = np.array(cmap(value)[:3]).squeeze()
+    elif methods == 'interpolate':
+        start = np.array([1, 1, 0])
+        end = np.array([0, 0, 1])
+        color_value = start + value * (end - start)
+    else:
+        r = value
+        g = 1 - value
+        b = value + (1 - value) / 2
+        color_value = np.array([r, g, b])
+    return color_value
 
 def apply_perturbation(image, perturbation, convert_dtype=True):
     # Convert image to binary
@@ -138,7 +152,8 @@ def alter_img(img, width, color_digit, color_bar):
     # change the color
     h, w = img.shape
     # print(color_digit, color_bar)
-    color_value = np.array(cmap(color_digit)[:3]).squeeze()
+    # color_value = np.array(cmap(color_digit.item())[:3]).squeeze()
+    color_value = value_to_rgb(color_digit.item())
     colored_arr = np.zeros((h, w, 3), dtype=np.uint8)
     mask = img > 0  # Mask to identify the digit
     for i in range(3):
@@ -146,7 +161,8 @@ def alter_img(img, width, color_digit, color_bar):
     img = colored_arr
 
     # add bar
-    color_value = np.array(cmap(color_bar)[:3]).squeeze()
+    # color_value = np.array(cmap(color_digit.item())[:3]).squeeze()
+    color_value = value_to_rgb(color_digit.item())
     img = add_bar(
         img,
         color_bar_val=color_value,
