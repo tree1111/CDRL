@@ -254,6 +254,51 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             samples = samples.view(num_samples, *self.input_shape)
         return samples, log_p
 
+    def contrastive_loss(
+        self,
+        v_latent: Tensor,
+        e: Tensor,
+        intervention_targets: Tensor,
+        hard_interventions: Tensor = None,
+    ) -> Tensor:
+        """Compute a contrastive loss metric.
+
+        For all variables in each distribution marked with indices of ``e``,
+        for each sample within the same distribution, we will minimize their
+        cosine similarity. For each sample within different distributions, we
+        will maximize their cosine similarity.
+
+        Each `v_latent` sample though consists of `latent_cluster_dims` corresponding
+        to the cluster dimensions of our latent causal graph. 
+
+        For any two arbitrary samples, that may come from different distributions, we will
+        either maximize, or minimize their similarities:
+
+        1. maximize: if the cluster dimension corresponds to a cluster variable that is a
+        descendant of an intervention difference including the intervened variable themselves.
+        2. minimize: if the cluster dimension corresponds to a cluster variable that is an
+        ancestor of an intervention difference, excluding the intervened variables.
+
+        Options: instead, we can also only maximize intervened variable differences
+        and minimize everything else.
+
+        Parameters
+        ----------
+        v_latent : Tensor of shape (batch_size, latent_cluster_dims)
+            _description_
+        e : Tensor
+            _description_
+        intervention_targets : Tensor
+            _description_
+        hard_interventions : Tensor, optional
+            _description_, by default None
+
+        Returns
+        -------
+        Tensor
+            _description_
+        """
+
     def log_prob(
         self,
         v_latent: Tensor,
@@ -340,12 +385,8 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # compute the log probability of the variable given the
                 # parametrized normal distribution using the parents mean and variance
-                log_p_distr = (
-                    torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
-                    .log_prob(v_env[:, cluster_idx])
-                    .sum(axis=1)
-                ).to(log_p.device)
-
+                distr = torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
+                log_p_distr = (distr.log_prob(v_env[:, cluster_idx]).sum(axis=1)).to(log_p.device)
                 log_p[env_mask] += log_p_distr
 
         return log_p

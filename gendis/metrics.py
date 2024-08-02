@@ -3,9 +3,35 @@ from itertools import permutations
 import numpy as np
 import torch
 from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import r2_score
 from torch import Tensor
 from torchmetrics import PearsonCorrCoef, SpearmanCorrCoef
+
+
+def nonlinear_r2(v_hat: Tensor, v: Tensor, method: str = "linear"):
+    if v_hat.shape != v.shape:
+        raise RuntimeError(f"v_hat and v must have the same shape, got {v_hat.shape} and {v.shape}")
+
+    if method == "linear":
+        reg = LinearRegression(fit_intercept=True).fit(v_hat, v)
+    elif method == "rf":
+        reg = RandomForestRegressor().fit(v_hat, v)
+    elif method == "svm":
+        reg = SVR().fit(v_hat, v)
+    elif method == "mlp":
+        reg = MLPRegressor().fit(v_hat, v)
+
+    v_pred = reg.predict(v_hat)
+    r2s = r2_score(v, v_pred, multioutput="raw_values")
+    corr_coefficients = np.mean(
+        np.sqrt(r2s)
+    )  # To be comparable to MCC (this is the average of R = coefficient of multiple correlation)
+    print(v.shape, v_hat.shape, r2s.shape, corr_coefficients.shape)
+
+    return corr_coefficients
 
 
 def learned_vs_latents(v_hat: Tensor, v: Tensor, method="pearson"):

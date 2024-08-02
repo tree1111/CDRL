@@ -308,7 +308,7 @@ if __name__ == "__main__":
             # torchvision.transforms.Resize((32, 32)),
             nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
             nf.utils.Jitter(1 / 256.0),  # apply random generation
-            torchvision.transforms.RandomRotation(350),  # get random rotations
+            # torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 

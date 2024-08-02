@@ -111,7 +111,9 @@ def bar_scm(n_samples, intervention_idx, label):
 
     # convert to a list of dictionaries, where each list element corresponds
     # to the meta labels of a single sample
-    meta_labels = [{key: meta_labels[key][i] for key in meta_labels} for i in range(n_samples)]
+    meta_labels = [
+        {key: meta_labels[key][i] for key in meta_labels.keys()} for i in range(n_samples)
+    ]
     return meta_labels, width, color_bar, color_digit
 
 
@@ -303,6 +305,22 @@ class CausalBarMNIST(Dataset):
 
         return img, meta_label, target
 
+    @property
+    def width(self):
+        return self.labels[:, 0]
+
+    @property
+    def color_bar(self):
+        return self.labels[:, 2]
+
+    @property
+    def color_digit(self):
+        return self.labels[:, 1]
+
+    @property
+    def latent_dim(self):
+        return self.labels.shape[1]
+
 
 if __name__ == "__main__":
     root = Path("/Users/adam2392/pytorch_data/")
@@ -320,9 +338,51 @@ if __name__ == "__main__":
     digit_zero_dataset = SingleDigitDataset(mnist_dataset, digit=digit)
     mnist_loader = DataLoader(digit_zero_dataset, batch_size=1, shuffle=True)
 
-    # create the altered dataset
-    imgs, labels = create_altered_mnist_dataset(
-        mnist_loader, label=digit, n_samples=10, intervention_idx=0, n_jobs=n_jobs
-    )
+    # # create the altered dataset
+    # imgs, labels = create_altered_mnist_dataset(
+    #     mnist_loader, label=digit, n_samples=10, intervention_idx=0, n_jobs=n_jobs
+    # )
     # print(imgs.shape)
     # print(len(labels))
+
+    all_imgs = []
+    all_labels = []
+    n_samples = 10
+
+    for intervention_idx in [0, 1, 2, 3]:
+        imgs, labels = create_altered_mnist_dataset(
+            mnist_loader,
+            label=digit,
+            n_samples=n_samples,
+            intervention_idx=intervention_idx,
+            n_jobs=n_jobs,
+        )
+
+        all_imgs.extend(imgs)
+
+        for label in labels:
+            label["distr_idx"] = intervention_idx
+        all_labels.extend(labels)
+
+    # now save the latent factors and the intervention targets
+    # per image
+    keys = ["width", "color_digit", "color_bar", "label", "distr_idx"]
+    label_tensor = torch.zeros((len(all_labels), len(keys)))
+    # convert the labels from a list of dictionaries to a tensor array
+    for idx, key in enumerate(keys):
+        label_tensor[:, idx] = torch.Tensor([label[key] for label in all_labels])
+
+    intervention_target_tensor = torch.zeros((len(all_labels), 3), dtype=torch.int)
+    intervention_target_tensor[:] = torch.Tensor(
+        [label["intervention_targets"] for label in all_labels]
+    )
+
+    # save the actual data to disc now
+    imgs_fname = root / "CausalBarMNIST" / "chain" / "chain-imgs-train.pt"
+    labels_fname = root / "CausalBarMNIST" / "chain" / "chain-labels-train.pt"
+    targets_fname = root / "CausalBarMNIST" / "chain" / "chain-targets-train.pt"
+    imgs_fname.parent.mkdir(exist_ok=True, parents=True)
+
+    torch.save(all_imgs, imgs_fname)
+    torch.save(label_tensor, labels_fname)
+    torch.save(intervention_target_tensor, targets_fname)
