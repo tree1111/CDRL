@@ -12,6 +12,7 @@ import torch
 import torchvision
 from pytorch_lightning.callbacks import ModelCheckpoint
 
+from gendis.causal.modelv2 import MultiscaleFlow
 from gendis.causal.modelv3 import CausalFlowModel, CausalNormalizingFlow
 from gendis.datasets import MultiDistrDataModule
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
@@ -94,6 +95,7 @@ def train_from_checkpoint(
 def make_model(adjacency_matrix, intervention_targets_per_distr):
     # Define flows
     # Define list of flows
+    L = 2
     K = 32
     net_hidden_layers = 3
     net_hidden_dim = 128
@@ -106,12 +108,34 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
                 latent_dim, net_hidden_layers, net_hidden_dim
             )
         ]
+    # flows += [nf.flows.Split()]
+    # flows.append(_flows)
+
+    # latent_dim = latent_dim // 2
+    # _flows = []
+    # for i in range(K):
+    #     _flows += [
+    #         nf.flows.AutoregressiveRationalQuadraticSpline(
+    #             latent_dim, net_hidden_layers, net_hidden_dim
+    #         )
+    #     ]
+    # flows.append(_flows)
 
     latent_shape = (32,)
+    # q0 = ClusteredCausalDistribution(
+    #     adjacency_matrix=adjacency_matrix,
+    #     cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
+    #     input_shape=latent_shape,
+    #     intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+    #     hard_interventions_per_distr=None,
+    # )
+
+    # independent noise with causal prior
     q0 = ClusteredCausalDistribution(
         adjacency_matrix=adjacency_matrix,
-        cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
+        cluster_sizes=[8, 8, 8],
         input_shape=latent_shape,
+        ind_noise_dim=8,
         intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
         hard_interventions_per_distr=None,
     )
@@ -156,11 +180,12 @@ def train_from_scratch(
         adjacency_matrix=adjacency_matrix,
         intervention_targets_per_distr=intervention_targets_per_distr,
     )
+
     model = CausalFlowModel(model=nf_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
 
     print("\n\nRunning forward direction...")
-    output, ldj = torch.randn(batch_size, 32), 0
-    output = nf_flow.forward(output)
+    output, output_v2, ldj = torch.randn(batch_size, 32), torch.randn(batch_size, 16), 0
+    # output = nf_flow(output)
     # output
     # output = output - output.min()
     # output = output / output.max() * 255
@@ -173,8 +198,9 @@ def train_from_scratch(
     #     print("Running: ", type(flow), output.shape, ldj.shape)
 
     print(output.shape)
+    # output = torch.randn(batch_size, 16)
     print("\n\n Now running reverse")
-    output = nf_flow.inverse(output)
+    output, ldj = nf_flow.inverse_and_log_det(output)
     print(output.shape)
     # for flow in reversed(nf_flow.flows):
     #     output, ldj = flow(output, ldj)
@@ -260,7 +286,9 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"mlp-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = (
+        f"mlp-with-indnoise-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 

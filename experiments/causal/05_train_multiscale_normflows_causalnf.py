@@ -12,8 +12,9 @@ import torch
 import torchvision
 from pytorch_lightning.callbacks import ModelCheckpoint
 
+from gendis.causal.modelv2 import MultiscaleFlow
+from gendis.causal.modelv3 import CausalFlowModel
 from gendis.datasets import MultiDistrDataModule
-from gendis.noncausal.modelv2 import MultiscaleFlow, MultiscaleGlowFlow
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
@@ -176,23 +177,6 @@ def train_from_scratch(
     logging.basicConfig(level=logging.INFO)
     logging.info(f"\n\n\tsaving to {model_fname} \n")
 
-    # Define the distributions
-    flow_layers = []
-
-    # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
-    print("\n\nRunning forward direction...")
-    output, ldj = torch.randn(batch_size, 3, 28, 28), 0
-    # output
-    output = output - output.min()
-    output = output / output.max() * 255
-    for idx, flow in enumerate(flow_layers):
-        # try:
-        #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
-        # except Exception as e:
-        #     print(idx)
-        output, ldj = flow(output, ldj)
-        print("Running: ", type(flow), output.shape, ldj.shape)
-
     # Sample latent representation from prior
     # if z_init is None:
     #     z = self.prior.sample(sample_shape=img_shape).to(self.device)
@@ -208,8 +192,23 @@ def train_from_scratch(
         adjacency_matrix=adjacency_matrix,
         intervention_targets_per_distr=intervention_targets_per_distr,
     )
-    model = MultiscaleGlowFlow(model=glow_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
+    model = CausalFlowModel(model=glow_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
     # print(output.shape)
+
+    # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
+    # print("\n\nRunning forward direction...")
+    # output, ldj = torch.randn(batch_size, 3, 28, 28), 0
+    # # output
+    # output = output - output.min()
+    # output = output / output.max() * 255
+    # for idx, flow in enumerate(glow_flow.flows):
+    #     # try:
+    #     #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
+    #     # except Exception as e:
+    #     #     print(idx)
+    #     output, ldj = flow(output, ldj)
+    #     print("Running: ", type(flow), output.shape, ldj.shape)
+
     # print('\n\n Now running reverse')
     # for flow in reversed(flow_layers):
     #     output, ldj = flow(output, ldj, reverse=True)
@@ -275,11 +274,11 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 1e-3
 
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "mps"
-    # intervention_types = [None, 1]
-    # num_workers = 1
-    # batch_size = 10
+    root = "/Users/adam2392/pytorch_data/"
+    accelerator = "mps"
+    intervention_types = [None, 1]
+    num_workers = 1
+    batch_size = 10
     print(args)
     # root = args.root_dir
     seed = args.seed

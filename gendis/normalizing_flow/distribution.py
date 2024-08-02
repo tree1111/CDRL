@@ -48,6 +48,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
         input_shape=None,
+        ind_noise_dim=None,
         fix_mechanisms: bool = False,
         use_matrix: bool = False,
     ):
@@ -94,6 +95,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.use_matrix = use_matrix
         self.input_shape = input_shape
 
+        # if independent noise is defined, it is used in the last dimensions
+        if ind_noise_dim is None:
+            ind_noise_dim = 0
+        self.ind_noise_dim = ind_noise_dim
+        if self.ind_noise_dim > 0:
+            self.ind_noise_q0 = nf.distributions.DiagGaussian(ind_noise_dim, trainable=True)
+
         if cluster_sizes is None:
             cluster_sizes = [1] * adjacency_matrix.shape[0]
         self.cluster_sizes = cluster_sizes
@@ -108,7 +116,10 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.dag = nx.DiGraph(adjacency_matrix)
         self.latent_dim = (
             self.dag.number_of_nodes() if self.cluster_sizes is None else np.sum(self.cluster_sizes)
-        )
+        ) + self.ind_noise_dim
+
+        if input_shape is not None:
+            assert np.sum(self.cluster_sizes) + self.ind_noise_dim == np.prod(input_shape)
 
         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -251,6 +262,11 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 .mean(axis=1)
             )
 
+        # sample from the independent noise distributions
+        if self.ind_noise_dim > 0:
+            samples[:, -self.ind_noise_dim :], ind_log_p = self.ind_noise_q0.forward(num_samples)
+            log_p += ind_log_p
+
         # reshape for the rest of the flow
         if self.input_shape is not None:
             samples = samples.view(num_samples, *self.input_shape)
@@ -342,8 +358,13 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
         log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
         latent_dim = v_latent.shape[1]
+        batch_size = v_latent.shape[0]
+        if intervention_targets is None:
+            intervention_targets = torch.zeros(batch_size, latent_dim)
         if hard_interventions is None:
             hard_interventions = torch.zeros_like(intervention_targets)
+        if e is None:
+            e = torch.zeros(batch_size, 1)
 
         for env in e.unique():
             env_mask = (e == env).flatten()
@@ -404,6 +425,11 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 log_p_distr = (distr.log_prob(v_env[:, cluster_idx]).sum(axis=1)).to(log_p.device)
                 log_p[env_mask] += log_p_distr
 
+        # sample from the independent noise distributions
+        if self.ind_noise_dim > 0:
+            v = v_latent[:, -self.ind_noise_dim :]
+            ind_log_p = self.ind_noise_q0.log_prob(v)
+            log_p += ind_log_p
         return log_p
 
 
