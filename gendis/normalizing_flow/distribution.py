@@ -31,7 +31,9 @@ class MultidistrCausalFlow(nf.distributions.BaseDistribution, ABC):
         This is used as the main training objective.
     """
 
-    def log_prob(self, z: Tensor, e: Tensor, intervention_targets: Tensor) -> Tensor:
+    def log_prob(
+        self, z: Tensor, e: Tensor, intervention_targets: Tensor, hard_interventions: Tensor
+    ) -> Tensor:
         raise NotImplementedError
 
     def sample(self, num_samples=1, intervention_targets: Tensor = None):
@@ -263,13 +265,21 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
     ) -> Tensor:
         """Compute a contrastive loss metric.
 
+        V1 -> V2 -> V3
+
+        Take a batch.
+        - separate samples into their different distributions
+        - across variables that are intervened, maximize their distribution distance
+            of the latent variable embedding for the intervened variable (e.g. V3)
+            across the different distributions
+
         For all variables in each distribution marked with indices of ``e``,
         for each sample within the same distribution, we will minimize their
         cosine similarity. For each sample within different distributions, we
         will maximize their cosine similarity.
 
         Each `v_latent` sample though consists of `latent_cluster_dims` corresponding
-        to the cluster dimensions of our latent causal graph. 
+        to the cluster dimensions of our latent causal graph.
 
         For any two arbitrary samples, that may come from different distributions, we will
         either maximize, or minimize their similarities:
@@ -298,6 +308,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         Tensor
             _description_
         """
+        pass
 
     def log_prob(
         self,
@@ -329,15 +340,17 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             # flatten representation
             v_latent = v_latent.view(n_batch, np.prod(self.input_shape))
 
-        log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype)  # , device=v_latent.device
+        log_p = torch.zeros(len(v_latent), dtype=v_latent.dtype, device=v_latent.device)
         latent_dim = v_latent.shape[1]
         if hard_interventions is None:
             hard_interventions = torch.zeros_like(intervention_targets)
 
         for env in e.unique():
             env_mask = (e == env).flatten()
-            env_mask = env_mask.to(log_p.device)
+            env_mask = env_mask  # .to(log_p.device)
 
+            # print('Analyzing environment ', env)
+            # print(v_latent.shape, env_mask.shape, intervention_targets.shape)
             v_env = v_latent[env_mask, :]
             intervention_targets_env = intervention_targets[env_mask, :]
             hard_interventions_env = hard_interventions[env_mask, :]
@@ -385,7 +398,9 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
                 # compute the log probability of the variable given the
                 # parametrized normal distribution using the parents mean and variance
-                distr = torch.distributions.Normal(parent_contribution + noise_contribution, var.sqrt())
+                distr = torch.distributions.Normal(
+                    parent_contribution + noise_contribution, var.sqrt()
+                )
                 log_p_distr = (distr.log_prob(v_env[:, cluster_idx]).sum(axis=1)).to(log_p.device)
                 log_p[env_mask] += log_p_distr
 

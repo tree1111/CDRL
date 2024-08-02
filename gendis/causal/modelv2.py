@@ -123,7 +123,7 @@ class MultiscaleFlow(nn.Module):
         """
         if temperature is not None:
             self.set_temperature(temperature)
-        
+
         log_q_ = 0.0
 
         for i in range(len(self.q0)):
@@ -169,7 +169,7 @@ class MultiscaleFlow(nn.Module):
             if self.class_cond:
                 z_, log_q_ = self.q0[i](num_samples, y)
             else:
-                print('Sampling from...', self.q0[i].__class__.__name__)
+                print("Sampling from...", self.q0[i].__class__.__name__)
                 z_, log_q_ = self.q0[i](num_samples)
 
             if return_prior:
@@ -223,12 +223,16 @@ class MultiscaleFlow(nn.Module):
                 log_q += self.q0[i].log_prob(z_, y)
             else:
                 if isinstance(self.q0[i], MultidistrCausalFlow):
-                    log_q += self.q0[i].log_prob(
-                        z_,
-                        intervention_targets=intervention_targets,
-                        e=distr_idx,
-                        hard_interventions=hard_interventions,
-                    ).to(z_.device)
+                    log_q += (
+                        self.q0[i]
+                        .log_prob(
+                            z_,
+                            intervention_targets=intervention_targets,
+                            e=distr_idx,
+                            hard_interventions=hard_interventions,
+                        )
+                        .to(z_.device)
+                    )
                 else:
                     log_q += self.q0[i].log_prob(z_)
         return log_q

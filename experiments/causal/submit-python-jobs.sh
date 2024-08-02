@@ -4,6 +4,7 @@
 SCRIPT_NAME="02_train_realnvp_model.py"
 # SCRIPT_NAME="03_train_realnvp_model_ind_noise.py"
 SCRIPT_NAME="05_train_multiscale_normflows_causalnf.py"
+SCRIPT_NAME="06_vae_reduction_mlp_causalnf.py"
 LOG_DIR="/home/adam2392/projects/logs/"
 
 # Number of GPUs available
@@ -36,7 +37,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  LOG_FILE="output_32and2glowblock_COSINELR_256batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
+  LOG_FILE="output_mlpnf_vaereduction_COSINELR_32batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
   nohup $CMD > $LOG_FILE 2>&1 &
 
   echo $TRAINING_SEED

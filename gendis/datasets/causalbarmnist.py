@@ -38,11 +38,12 @@ def add_bar(img, color_bar_val=255, start_height=0, height=3, start_width=0, wid
         )
     return img
 
+
 def value_to_rgb(value, methods=None, cmap=None):
     # Map to RGB components
-    if methods == 'cmap':
+    if methods == "cmap":
         color_value = np.array(cmap(value)[:3]).squeeze()
-    elif methods == 'interpolate':
+    elif methods == "interpolate":
         start = np.array([1, 1, 0])
         end = np.array([0, 0, 1])
         color_value = start + value * (end - start)
@@ -52,6 +53,7 @@ def value_to_rgb(value, methods=None, cmap=None):
         b = value + (1 - value) / 2
         color_value = np.array([r, g, b])
     return color_value
+
 
 def apply_perturbation(image, perturbation, convert_dtype=True):
     # Convert image to binary
@@ -273,9 +275,14 @@ class CausalBarMNIST(Dataset):
         self.labels = torch.load(
             root / self.__class__.__name__ / graph_type / f"{graph_type}-labels-train.pt"
         )
+        if isinstance(self.labels, list):
+            self.labels = torch.vstack(self.labels)
+
         self.intervention_targets = torch.load(
             root / self.__class__.__name__ / graph_type / f"{graph_type}-targets-train.pt"
         )
+        if isinstance(self.intervention_targets, list):
+            self.intervention_targets = torch.vstack(self.intervention_targets)
 
         if not all(
             [
@@ -336,6 +343,10 @@ class CausalBarMNIST(Dataset):
     @property
     def latent_dim(self):
         return self.labels.shape[1]
+
+    @property
+    def distribution_idx(self):
+        return self.labels[:, 4]
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
-from pydantic import BaseModel
 from typing import Optional, Union
+
 import yaml
+from pydantic import BaseModel
 
 
 class TrainConfig(BaseModel):
@@ -41,7 +42,7 @@ class Config(BaseModel):
 
 def load_config(path="config.yaml"):
     config = yaml.load(open(path), yaml.SafeLoader)
-    model_type = config['model_params']['model_type']
+    model_type = config["model_params"]["model_type"]
     if model_type == "vae":
         model_config = VAEConfig(**config["model_params"])
     elif model_type == "conv-vae":
@@ -50,8 +51,12 @@ def load_config(path="config.yaml"):
         raise NotImplementedError(f"Model {model_type} is not implemented")
     train_config = TrainConfig(**config["training_params"])
     log_config = LoggerConfig(**config["logger_params"])
-    config = Config(model_configuration=model_config, train_config=train_config,
-                    model_type=model_type, log_config=log_config)
+    config = Config(
+        model_configuration=model_config,
+        train_config=train_config,
+        model_type=model_type,
+        log_config=log_config,
+    )
 
     return config
 

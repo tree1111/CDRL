@@ -14,6 +14,7 @@ class CausalNormalizingFlow(nf.NormalizingFlow):
     """
     Normalizing Flow model with multiscale architecture, see RealNVP or Glow paper
     """
+
     q0: MultidistrCausalFlow
 
     def __init__(self, q0, flows, p=None):
@@ -41,7 +42,12 @@ class CausalNormalizingFlow(nf.NormalizingFlow):
         for i in range(len(self.flows) - 1, -1, -1):
             z, log_det = self.flows[i].inverse(z)
             log_q += log_det
-        log_q += self.q0.log_prob(z, intervention_targets, distr_idx, hard_interventions)
+        log_q += self.q0.log_prob(
+            z,
+            intervention_targets=intervention_targets,
+            e=distr_idx,
+            hard_interventions=hard_interventions,
+        )
         return -torch.mean(log_q)
 
     def sample(self, num_samples=1):
@@ -77,7 +83,7 @@ class CausalNormalizingFlow(nf.NormalizingFlow):
         return log_q
 
 
-class CausalGlowFlow(pl.LightningModule):
+class CausalFlowModel(pl.LightningModule):
     model: CausalNormalizingFlow
 
     def __init__(self, model, lr=1e-3, lr_min=1e-8, lr_scheduler=None):
@@ -128,6 +134,8 @@ class CausalGlowFlow(pl.LightningModule):
         distr_idx = meta_labels[:, -1]
         hard_interventions = None
         targets = batch[2]
+
+        # print("Inside training step: ", samples.shape, meta_labels.shape, targets.shape)
         # Normalizing flows are trained by maximum likelihood => return bpd
         loss = self.model.forward_kld(
             samples,
