@@ -98,7 +98,7 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
     L = 2
     K = 32
     net_hidden_layers = 3
-    net_hidden_dim = 128
+    net_hidden_dim = 64
     latent_dim = 32
 
     flows = []
@@ -287,7 +287,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_name = (
-        f"mlp-with-indnoise-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+        f"64hidden-mlp-with-indnoise-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
