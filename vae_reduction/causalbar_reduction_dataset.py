@@ -1,3 +1,4 @@
+from pathlib import Path
 from torchvision import datasets, transforms
 from gendis.datasets import MultiDistrDataModule
 
@@ -88,19 +89,21 @@ def make_vae_reduction_dataset(model, data_root, new_root):
 
 if __name__ == "__main__":
     # your original data root
-    data_root = '../../dat'
+    # data_root = '../../dat'
+    data_root = Path("/Users/adam2392/pytorch_data/")
 
     # your model root, you do not need this d. you can just write: model_root = '...'
-    d = config.model_config.dict()['save_path'] + '/' 'zdim_' + str(config.model_config.dict()['hidden_size']) \
-        + '_alpha' + str(config.model_config.dict()['alpha'])
-    model_root = d + f"/saved_models/{config.model_type}_alpha_{config.model_config.alpha}" \
-                     f"_dim_{config.model_config.hidden_size}.ckpt"
+    # d = config.model_config.dict()['save_path'] + '/' 'zdim_' + str(config.model_config.dict()['hidden_size']) \
+    #     + '_alpha' + str(config.model_config.dict()['alpha'])
+    # model_root = d + f"/saved_models/{config.model_type}_alpha_{config.model_config.alpha}" \
+    #                  f"_dim_{config.model_config.hidden_size}.ckpt"
+    model_root = data_root / 'vae-reduction' / 'conv-vae_alpha_1024_dim_32.ckpt'
 
     # load vae model
     model = load_vae_model(config, data_root, model_root)
     model.eval()
     # set new data root, must be different with the data_root
-    new_root = 'causalbar_reduction_dat/'
+    new_root = data_root / 'causalbar_reduction_dat/'
 
     # make new data
     make_vae_reduction_dataset(model, data_root, new_root)
