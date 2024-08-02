@@ -122,13 +122,13 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
     # flows.append(_flows)
 
     latent_shape = (32,)
-    # q0 = ClusteredCausalDistribution(
-    #     adjacency_matrix=adjacency_matrix,
-    #     cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
-    #     input_shape=latent_shape,
-    #     intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
-    #     hard_interventions_per_distr=None,
-    # )
+    q0 = ClusteredCausalDistribution(
+        adjacency_matrix=adjacency_matrix,
+        cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
+        input_shape=latent_shape,
+        intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+        hard_interventions_per_distr=None,
+    )
 
     # independent noise with causal prior
     q0 = ClusteredCausalDistribution(
@@ -266,11 +266,11 @@ if __name__ == "__main__":
     lr_min = 1e-7
     lr = 1e-3
 
-    # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "mps"
-    # intervention_types = [None, 1]
-    # num_workers = 1
-    # batch_size = 10
+    root = "/Users/adam2392/pytorch_data/"
+    accelerator = "mps"
+    intervention_types = [None, 1]
+    num_workers = 1
+    batch_size = 10
 
     root = Path(root)
     new_root = root / "causalbar_reduction_dat/"
@@ -287,7 +287,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_name = (
-        f"64hidden-mlp-with-indnoise-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+        f"64hidden-mlp-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
