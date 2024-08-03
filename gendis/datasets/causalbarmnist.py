@@ -187,7 +187,7 @@ def create_altered_mnist_dataset(
     # labels are stored as a list of dictionaries
     labels = []
 
-    meta_labels, width, color_digit, color_bar = bar_scm(n_samples, intervention_idx, label=label)
+    meta_labels, width, color_bar, color_digit = bar_scm(n_samples, intervention_idx, label=label)
 
     if n_jobs is None:
         n_jobs = 1
@@ -331,6 +331,18 @@ class CausalBarMNIST(Dataset):
     @property
     def width(self):
         return self.labels[:, 0]
+
+    @property
+    def width_idx(self):
+        return 0
+
+    @property
+    def color_bar_idx(self):
+        return 2
+    
+    @property
+    def color_digit_idx(self):
+        return 1
 
     @property
     def color_bar(self):

@@ -61,4 +61,4 @@ def load_config(path="config.yaml"):
     return config
 
 
-config = load_config()
+# config = load_config()

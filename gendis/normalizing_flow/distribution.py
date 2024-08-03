@@ -248,7 +248,6 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             var *= noise_coeff**2
 
             # print(parent_contribution, noise_contribution.shape, var.shape, samples[:, idx].shape)
-
             # samples from the normal distribution for (n_samples, cluster_dims)
             samples[:, cluster_idx] = torch.normal(
                 parent_contribution + noise_contribution, var.sqrt()
