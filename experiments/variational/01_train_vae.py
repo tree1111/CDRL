@@ -14,7 +14,7 @@ import torch.nn as nn
 import torchvision
 from pl_bolts.models.autoencoders.components import resnet18_decoder, resnet18_encoder
 
-from gendis.datasets import CausalMNIST, MultiDistrDataModule
+from gendis.datasets import MultiDistrDataModule
 from gendis.variational.vae import VAE
 
 

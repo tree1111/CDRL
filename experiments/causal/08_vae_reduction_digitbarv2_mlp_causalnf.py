@@ -1,4 +1,4 @@
-# Training of a RealNVP model on the MNIST dataset with independent high-dimensional factors
+# Using the normflows package, train a normaliznig flow model on a dataset of colored images.# Training of a RealNVP model on the MNIST dataset with independent high-dimensional factors
 # as the independent noise variables, which do not change with respect to each dataset.
 import argparse
 import logging
@@ -11,19 +11,9 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
+from gendis.causal.modelv3 import CausalFlowModel, CausalNormalizingFlow
 from gendis.datasets import MultiDistrDataModule
-from gendis.noncausal.flows import (
-    ActNorm,
-    CouplingLayer,
-    GatedConvNet,
-    Invertible1x1Conv,
-    SplitFlow,
-    SqueezeFlow,
-    VariationalDequantization,
-    create_channel_mask,
-    create_checkerboard_mask,
-)
-from gendis.noncausal.model import ImageFlow
+from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
 
 
 def generate_list(x, n_clusters):
@@ -61,11 +51,11 @@ def train_from_checkpoint(
     checkpoint_dir,
     model_fname,
 ):
-    monitor = "train_bpd"
+    monitor = "train_kld"
     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     current_max_epochs = checkpoint["epoch"]
     max_epochs += current_max_epochs
-    model = ImageFlow.load_from_checkpoint(checkpoint_path)
+    # model = ImageFlow.load_from_checkpoint(checkpoint_path)
 
     # 04b: Define the trainer for the model
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
@@ -100,6 +90,47 @@ def train_from_checkpoint(
     torch.save(model, checkpoint_dir / model_fname)
 
 
+def make_model(adjacency_matrix, intervention_targets_per_distr):
+    # Define flows
+    # Define list of flows
+    L = 2
+    K = 32
+    net_hidden_layers = 3
+    net_hidden_dim = 64
+    latent_dim = 32
+
+    flows = []
+    for i in range(K):
+        flows += [
+            nf.flows.AutoregressiveRationalQuadraticSpline(
+                latent_dim, net_hidden_layers, net_hidden_dim
+            )
+        ]
+    
+    latent_shape = (32,)
+    # q0 = ClusteredCausalDistribution(
+    #     adjacency_matrix=adjacency_matrix,
+    #     cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
+    #     input_shape=latent_shape,
+    #     intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+    #     hard_interventions_per_distr=None,
+    # )
+
+    # independent noise with causal prior
+    q0 = ClusteredCausalDistribution(
+        adjacency_matrix=adjacency_matrix,
+        cluster_sizes=[9, 9, 9],
+        input_shape=latent_shape,
+        ind_noise_dim=5,
+        intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+        hard_interventions_per_distr=None,
+    )
+
+    # Construct flow model with the multiscale architecture
+    model = CausalNormalizingFlow(q0, flows)
+    return model
+
+
 def train_from_scratch(
     data_module,
     max_epochs,
@@ -107,133 +138,19 @@ def train_from_scratch(
     accelerator,
     checkpoint_dir,
     model_fname,
+    adjacency_matrix,
+    intervention_targets_per_distr,
 ):
+    lr_scheduler = "cosine"
+    lr_min = 1e-7
+    lr = 1e-3
+
     # set up logging
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
     logging.info(f"\n\n\tsaving to {model_fname} \n")
 
-    intervention_targets_per_distr = data_module.dataset.intervention_targets
-    hard_interventions_per_distr = None
-
-    graph = adjacency_matrix
-    cluster_sizes = generate_list(784 * 3, 3)
-    cluster_sizes = None
-    input_shape = (3, 28, 28)
-    channels = 3
-    use_vardeq = False
-    normalize = True
-
     # Define the distributions
-    flow_layers = []
-    n_flows = 4
-
-    # add variational dequantization
-    n_chs = 3
-    vardeq_layers = [
-        CouplingLayer(
-            network=GatedConvNet(c_in=n_chs * 2, c_out=n_chs * 2, c_hidden=16),
-            mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-            c_in=n_chs,
-        )
-        for i in range(4)
-    ]
-    if use_vardeq:
-        flow_layers += [VariationalDequantization(var_flows=vardeq_layers)]
-
-    # first create a sequence of channel and checkerboard masking
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=24),
-                mask=create_channel_mask(c_in=3, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-        ]
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=3, c_hidden=24),
-                mask=create_checkerboard_mask(h=28, w=28, invert=(i % 2 == 1)),
-                c_in=3,
-            )
-        ]
-
-        if normalize:
-            flow_layers += [Invertible1x1Conv(n_chs, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((3, 1, 1))]
-    flow_layers += [SqueezeFlow()]
-    n_chs_now = n_chs * 4  # now 12 = 3 * 4
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=32),
-                mask=create_checkerboard_mask(h=14, w=14, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
-
-    flow_layers += [SplitFlow(), SqueezeFlow()]
-    n_chs_now = n_chs_now * 4 // 2  # now 24 = 12 * 4 // 2
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=48),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            # input the shape of the coupling layer
-            # Invertible 1x1 convolution
-            if n_chs_now > 1:
-                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
-
-    flow_layers += [SplitFlow()]
-    n_chs_now = n_chs_now // 2  # now 12 = 24 // 2
-    for i in range(n_flows):
-        flow_layers += [
-            CouplingLayer(
-                network=GatedConvNet(c_in=n_chs_now, c_hidden=64),
-                mask=create_channel_mask(c_in=n_chs_now, invert=(i % 2 == 1)),
-                c_in=n_chs_now,
-            )
-        ]
-
-        if normalize:
-            if n_chs_now > 1:
-                flow_layers += [Invertible1x1Conv(n_chs_now, False)]
-            # input the shape of the coupling layer
-            flow_layers += [ActNorm((n_chs_now, 1, 1))]
-
-    # flow_layers += [Reshape((24, 7, 7), (784 * 3 // 2,))]
-    print("\n\nRunning forward direction...")
-    output, ldj = torch.randn(batch_size, 3, 28, 28), 0
-    # output
-    output = output - output.min()
-    output = output / output.max() * 255
-    for idx, flow in enumerate(flow_layers):
-        # try:
-        #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
-        # except Exception as e:
-        #     print(idx)
-        output, ldj = flow(output, ldj)
-        print("Running: ", type(flow), output.shape, ldj.shape)
-
     # Sample latent representation from prior
     # if z_init is None:
     #     z = self.prior.sample(sample_shape=img_shape).to(self.device)
@@ -245,20 +162,38 @@ def train_from_scratch(
     # for flow in reversed(self.flows):
     #     z, ldj = flow(z, ldj, reverse=True)
 
-    model = ImageFlow(
-        flow_layers,
-        lr=lr,
-        lr_min=lr_min,
-        lr_scheduler=lr_scheduler,
+    nf_flow = make_model(
+        adjacency_matrix=adjacency_matrix,
+        intervention_targets_per_distr=intervention_targets_per_distr,
     )
-    # print(output.shape)
-    # print('\n\n Now running reverse')
-    # for flow in reversed(flow_layers):
-    #     output, ldj = flow(output, ldj, reverse=True)
+
+    model = CausalFlowModel(model=nf_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
+
+    print("\n\nRunning forward direction...")
+    output, output_v2, ldj = torch.randn(batch_size, 32), torch.randn(batch_size, 16), 0
+    # output = nf_flow(output)
+    # output
+    # output = output - output.min()
+    # output = output / output.max() * 255
+    # for idx, flow in enumerate(nf_flow.flows):
+    #     # try:
+    #     #     print(flow.batch_dims, flow.n_dim, flow.s.shape)
+    #     # except Exception as e:
+    #     #     print(idx)
+    #     output, ldj = flow(output, ldj)
+    #     print("Running: ", type(flow), output.shape, ldj.shape)
+
+    print(output.shape)
+    # output = torch.randn(batch_size, 16)
+    print("\n\n Now running reverse")
+    output, ldj = nf_flow.inverse_and_log_det(output)
+    print(output.shape)
+    # for flow in reversed(nf_flow.flows):
+    #     output, ldj = flow(output, ldj)
     #     print("Running: ", type(flow), output.shape)
     # prior = torch.distributions.normal.Normal(loc=0.0, scale=1.0)
-    output = model.sample((5, 12, 7, 7))
-    print(output.shape)
+    output, ldj = model.sample(num_samples=16)
+    print(output.shape, ldj.shape)
 
     # 04b: Define the trainer for the model
     checkpoint_dir = Path(checkpoint_root_dir)
@@ -269,7 +204,7 @@ def train_from_scratch(
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="train_bpd",
+        monitor="train_kld",
         every_n_epochs=check_val_every_n_epoch,
     )
 
@@ -318,10 +253,14 @@ if __name__ == "__main__":
     lr = 1e-3
 
     # root = "/Users/adam2392/pytorch_data/"
-    # accelerator = "cpu"
+    # accelerator = "mps"
     # intervention_types = [None, 1]
     # num_workers = 1
     # batch_size = 10
+
+    root = Path(root)
+    # XXX: change this depending on the dataset
+    new_root = root / "causalbar_reduction_dat/"
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -334,7 +273,9 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"nf-actnorm-3point1M-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = (
+        f"64hidden-mlp-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
@@ -348,33 +289,33 @@ if __name__ == "__main__":
         [
             torchvision.transforms.ToTensor(),
             # torchvision.transforms.Resize((32, 32)),
-            nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
-            nf.utils.Jitter(1 / 256.0),  # apply random generation
-            torchvision.transforms.RandomRotation(350),  # get random rotations
+            # nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
+            # nf.utils.Jitter(1 / 256.0),  # apply random generation
+            # torchvision.transforms.RandomRotation(350),  # get random rotations
         ]
     )
 
-    # now we can wrap this in a pytorch lightning datamodule
-    # data_module = ClusteredMultiDistrDataModule(
-    #     root=root,
-    #     graph_type=graph_type,
-    #     num_workers=num_workers,
-    #     batch_size=batch_size,
-    #     intervention_types=intervention_types,
-    #     transform=transform,
-    #     log_dir=log_dir,
-    #     flatten=False,
-    # )
+    # demo to load dataloader. please make sure transform is None. d
     data_module = MultiDistrDataModule(
-        root=root,
-        stratify_distrs=True,
-        graph_type=graph_type,
-        num_workers=num_workers,
+        root=new_root,
+        graph_type="chain",
         batch_size=batch_size,
-        transform=transform,
-        log_dir=log_dir,
+        stratify_distrs=True,
+        transform=None,
+        num_workers=num_workers,
+        dataset_name='digitcolorbar',
     )
     data_module.setup()
+
+    intervention_targets_per_distr = []
+    # print(torch.vstack(data_module.dataset.labels).shape)
+    # print(torch.vstack(data_module.dataset.intervention_targets).shape)
+    print(data_module.dataset.intervention_targets.shape)
+    print(data_module.dataset.labels.shape)
+    for distr_idx in data_module.dataset.distribution_idx.unique():
+        idx = np.argwhere(data_module.dataset.distribution_idx == distr_idx)[0][0]
+        intervention_targets_per_distr.append(data_module.dataset.intervention_targets[idx])
+    print(idx)
 
     # epoch = 9306
     # step = 781788
@@ -398,4 +339,6 @@ if __name__ == "__main__":
         accelerator,
         checkpoint_root_dir,
         model_fname,
+        adjacency_matrix,
+        intervention_targets_per_distr,
     )

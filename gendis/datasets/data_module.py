@@ -112,8 +112,11 @@ class MultiDistrDataModule(LightningDataModule):
         self.label = label
         self.graph_type = graph_type
 
+        if self.dataset_name not in ["digitcolorbar", "colorbar"]:
+            raise ValueError(f"Unknown dataset name: {self.dataset_name}")
+
     def setup(self, stage: Optional[str] = None) -> None:
-        if self.dataset_name == "digit":
+        if self.dataset_name == "digitcolorbar":
             self.dataset = CausalDigitBarMNIST(
                 root=self.root,
                 graph_type=self.graph_type,
@@ -121,7 +124,7 @@ class MultiDistrDataModule(LightningDataModule):
                 n_jobs=None,
                 transform=self.transform,
             )
-        else:
+        elif self.dataset_name == "colorbar":
             self.dataset = CausalBarMNIST(
                 root=self.root,
                 graph_type=self.graph_type,

@@ -10,9 +10,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-from pytorch_lightning.callbacks import ModelCheckpoint
 
-from gendis.causal.modelv2 import MultiscaleFlow
 from gendis.causal.modelv3 import CausalFlowModel, CausalNormalizingFlow
 from gendis.datasets import MultiDistrDataModule
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
@@ -273,6 +271,7 @@ if __name__ == "__main__":
     # batch_size = 10
 
     root = Path(root)
+    # XXX: change this depending on the dataset
     new_root = root / "causalbar_reduction_dat/"
     print(args)
     # root = args.root_dir

@@ -63,7 +63,7 @@ def make_vae_reduction_dataset(model, data_root, new_root):
         transform=data_transform,
         num_workers=1,
         train_size=1.0,
-        dataset_name='digit'
+        dataset_name="digit",
     )
 
     data_module.setup()
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         stratify_distrs=True,
         transform=None,
         num_workers=1,
-        dataset_name='digit'
+        dataset_name="digit",
     )
     new_data_module.setup()
 

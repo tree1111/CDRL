@@ -11,15 +11,11 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
-from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
-from gendis.encoder import CausalMultiscaleFlow
-from gendis.model import NeuralClusteredASCMFlow
+from gendis.datasets import ClusteredMultiDistrDataModule
 from gendis.noncausal.flows import (
     CouplingLayer,
-    Dequantization,
     GatedConvNet,
     Reshape,
-    VariationalDequantization,
     create_channel_mask,
     create_checkerboard_mask,
 )

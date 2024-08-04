@@ -52,7 +52,11 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         fix_mechanisms: bool = False,
         use_matrix: bool = False,
     ):
-        """Parametric distribution over a clustered causal graph.
+        """Linear clustered causal graph distribution.
+
+        This class defines a parametric distribution over a clustered causal graph, where
+        the causal mechanisms are linear. The noise distributions are assumed to be Gaussian.
+        This allows for multiple distributions.
 
         A clustered causal graph defines a grouping over the variables in the graph.
         Thus the variables that describe the graph can either be the clusters, or the

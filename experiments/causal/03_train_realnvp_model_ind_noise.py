@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 import torch
 import torchvision
 
-from gendis.datasets import CausalMNIST, ClusteredMultiDistrDataModule
+from gendis.datasets import ClusteredMultiDistrDataModule
 from gendis.encoder import CausalMultiscaleFlow
 from gendis.model import NeuralClusteredASCMFlow
 from gendis.normalizing_flow.distribution import ClusteredCausalDistribution

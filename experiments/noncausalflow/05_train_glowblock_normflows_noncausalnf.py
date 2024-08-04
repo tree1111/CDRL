@@ -10,10 +10,8 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-from pytorch_lightning.callbacks import ModelCheckpoint
 
 from gendis.datasets import MultiDistrDataModule
-from gendis.noncausal.modelv3 import CausalGlowFlow
 
 
 def generate_list(x, n_clusters):
