@@ -120,11 +120,11 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
         """
         (x, meta_labels) = batch
         print(x.shape, len(meta_labels), type(meta_labels))
-        width = meta_labels[0]
-        color = meta_labels[1]
-        fracture_thickness = meta_labels[2]
-        fracture_num_fractures = meta_labels[3]
-        label = meta_labels[4]
+        meta_labels[0]
+        meta_labels[1]
+        meta_labels[2]
+        meta_labels[3]
+        meta_labels[4]
         distr_indicators = meta_labels[5]
         intervention_targets = meta_labels[6]
         log_prob = self.encoder.log_prob(

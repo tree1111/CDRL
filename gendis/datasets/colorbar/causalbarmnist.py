@@ -2,8 +2,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import scipy.stats
+import torch
 from joblib import Parallel, delayed
 from PIL import Image
 from scipy.stats import truncnorm
@@ -146,7 +146,7 @@ def bar_scm(n_samples, intervention_idx, label):
 
 # Placeholder for alter_img function
 def alter_img(img, width, color_digit, color_bar):
-    cmap = plt.cm.viridis
+    plt.cm.viridis
 
     # Apply transformations to the image based on the parameters
     # This is just a placeholder, you need to implement the actual transformation logic
@@ -186,138 +186,6 @@ def alter_img(img, width, color_digit, color_bar):
     )
     # print('Finished altering image: ', img.shape)
     return img
-
-
-def bar_digit_scm(intervention_idx, labels):
-    """Generate parameters for the SCM of the MNIST dataset with a bar.
-
-    There are four possible distributions that are generated. The first is observational
-    (intervention_idx == 0):
-
-        - digit is just uniformly distributed more or less in the MNIST dataset
-        - color-digit will be a mixture of gaussians, where the mean is evenly
-        spaced from 0 to 1 depending on the digit, and the standard deviation
-        is a default value of 0.1 for each digit
-        - color-bar will be a function of color-digit, sampled from a truncated
-        normal distribution with mean equal to the color-digit value and a standard
-        deviation of 0.1
-
-    Intervention 1 (color-bar) is changed:
-        - color-bar will be sampled from a truncated normal distribution with
-        mean equal to 1 - color-digit and a standard deviation of 0.1
-
-    Intervention 2 (color-bar) is changed:
-        - color-bar will be sampled from a skewed distribution towards
-        0.9.
-
-    Parameters
-    ----------
-    intervention_idx : int
-        The intervention index.
-    labels : tensor of shape (n_samples,)
-        The labels of each of the MNIST digit samples. This corresponds to the
-        digit.
-
-    Returns
-    -------
-    causal_labels : dict
-        A dictionary of:
-            - digit : tensor of shape (n_samples,)
-                The digit label.
-            - color_digit : tensor of shape (n_samples,)
-                The value of the color-digit from [0, 1].
-            - color_bar : tensor of shape (n_samples,)
-                The value of the color-digit from [0, 1].
-    """
-    n_samples = labels.shape[0]
-
-    # Digit is just uniformly distributed more or less in the MNIST dataset
-    digit = labels
-
-    # Color-digit will be a mixture of gaussians
-    color_digit_means = torch.linspace(
-        0, 1, 10
-    )  # 10 possible digits, evenly spaced means from 0 to 1
-    color_digit_stds = 0.1 * torch.ones(10)  # Standard deviation of 0.1 for each digit
-    color_digit = torch.zeros(n_samples)
-
-    for i in range(10):
-        mask = digit == i
-        num_samples = mask.sum().item()
-        color_digit[mask] = torch.distributions.Normal(
-            color_digit_means[i], color_digit_stds[i]
-        ).sample((num_samples,))
-
-    causal_labels = dict()
-    # Generate color_bar based on the intervention index
-    if intervention_idx == 0:
-        # Observational distribution
-        color_bar = truncated_normal(color_digit, 0.1, 0, 1, n_samples)
-        causal_labels["intervention_targets"] = [[0, 0, 0]] * n_samples
-    elif intervention_idx == 1:
-        # Intervention 1: mean equal to 1 - color-digit
-        color_bar = truncated_normal(1 - color_digit, 0.1, 0, 1, n_samples)
-        causal_labels["intervention_targets"] = [[0, 0, 1]] * n_samples
-    elif intervention_idx == 2:
-        # Intervention 2: skewed distribution towards 0.9
-        color_bar = skewed_normal(0.9, -5, n_samples)
-        causal_labels["intervention_targets"] = [[0, 0, 1]] * n_samples
-    else:
-        raise ValueError("Invalid intervention_idx. Must be 0, 1, or 2.")
-
-    causal_labels.update({"digit": digit, "color_digit": color_digit, "color_bar": color_bar})
-
-    return causal_labels
-
-    if intervention_idx == 0:
-        mu_cb, sigma_cb = 0, 0.2
-    elif intervention_idx == 1:
-        mu_cd, sigma_cd = 0.6, 0.2
-    elif intervention_idx == 2:
-        mu_cd, sigma_cd = 0.9, 0.05
-    elif intervention_idx == 3:
-        # width_lim = [-0.5, 0.5]
-        width_lim = [-0.95, 0.95]
-        width = truncated_normal(0.5, 0.5, *width_lim, n_samples)
-
-    # sample exogenous noise for color of digit and color of bar
-    noise_cd = truncated_normal(mu_cd, sigma_cd, 0.0, 1.0, n_samples)
-    # noise_cb = truncated_normal(mu_cb, sigma_cb, 0, 1, n_samples)
-
-    color_bar = truncated_normal(np.mean(width), 0.05, 0, 1, n_samples)
-    color_bar = post_process_color_digit(color_bar, bad_val=0)
-
-    color_digit = np.clip(color_bar + noise_cd, 0, 1)
-    color_digit = post_process_color_digit(color_digit, bad_val=0)
-    # Generate samples for observational setting
-    # color_bar = np.clip((width + 2) / 4 + noise_cb, 0, 1)
-    # color_digit = np.clip(color_bar + noise_cd, 0, 1)
-
-    width = torch.Tensor(width)
-    color_bar = torch.Tensor(color_bar)
-    color_digit = torch.Tensor(color_digit)
-
-    meta_labels = dict()
-    meta_labels["width"] = width.to(torch.float32)
-    meta_labels["color_digit"] = color_digit.to(torch.float32)
-    meta_labels["color_bar"] = color_bar.to(torch.float32)
-    meta_labels["label"] = [label] * n_samples
-    # add intervention targets
-    if intervention_idx is None or intervention_idx == 0:
-        meta_labels["intervention_targets"] = [[0, 0, 0]] * n_samples
-    elif intervention_idx in [1, 2]:
-        # intervene and change the distribution of the color-digit
-        meta_labels["intervention_targets"] = [[0, 0, 1]] * n_samples
-    elif intervention_idx in [3]:
-        # intervene and change the distribution of the digit width
-        meta_labels["intervention_targets"] = [[1, 0, 0]] * n_samples
-
-    # convert to a list of dictionaries, where each list element corresponds
-    # to the meta labels of a single sample
-    meta_labels = [
-        {key: meta_labels[key][i] for key in meta_labels.keys()} for i in range(n_samples)
-    ]
-    return meta_labels, width, color_bar, color_digit
 
 
 # Function to create a new dataset
@@ -440,7 +308,7 @@ class CausalBarMNIST(Dataset):
         return [
             [0, 0, 0],
             [0, 0, 1],
-            [0, 1, 0],
+            [0, 0, 1],
             [1, 0, 0],
         ]
 
@@ -470,6 +338,10 @@ class CausalBarMNIST(Dataset):
             img = self.transform(img)
 
         return img, meta_label, target
+
+    @property
+    def meta_label_strs(self):
+        return ["width", "color_digit", "color_bar", "distr_idx"]
 
     @property
     def width(self):
@@ -502,82 +374,6 @@ class CausalBarMNIST(Dataset):
     @property
     def distribution_idx(self):
         return self.labels[:, 4]
-
-
-# Define the dataset loader for digit dataset
-class CausalDigitBarMNIST(Dataset):
-    def __init__(
-        self,
-        root,
-        graph_type,
-        train=True,
-        transform=None,
-        target_transform=None,
-        n_jobs=None,
-    ):
-        self.root = root
-        self.train = train
-        self.transform = transform
-        self.target_transform = target_transform
-        self.n_jobs = n_jobs
-        self.graph_type = graph_type
-
-        root = Path(root)
-
-        # load data from disc
-        self.data = torch.load(
-            root / self.__class__.__name__ / graph_type / f"{graph_type}-imgs-train.pt"
-        )
-        self.labels = torch.load(
-            root / self.__class__.__name__ / graph_type / f"{graph_type}-labels-train.pt"
-        )
-        self.intervention_targets = torch.load(
-            root / self.__class__.__name__ / graph_type / f"{graph_type}-targets-train.pt"
-        )
-
-        if not all(
-            [
-                len(self.data) == len(self.labels),
-                len(self.data) == len(self.intervention_targets),
-            ]
-        ):
-            raise ValueError("Data, labels and intervention targets must have the same length.")
-
-    @property
-    def intervention_targets_per_distr(self):
-        return [
-            [0, 0, 0],
-            [0, 0, 1],
-            [0, 1, 0],
-            [1, 0, 0],
-        ]
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        """Get a sample from the image dataset.
-
-        The target composes of the meta-labeling:
-        - width
-        - color
-        - fracture_thickness
-        - fracture_num_fractures
-        - label
-        """
-        img, meta_label, target = (
-            self.data[index],
-            self.labels[index],
-            self.intervention_targets[index],
-        )
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        # img = Image.fromarray(img.numpy(), mode="L")
-        if self.transform is not None:
-            img = self.transform(img)
-
-        return img, meta_label, target
 
 
 if __name__ == "__main__":

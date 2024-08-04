@@ -1,17 +1,12 @@
-import collections
-from copy import deepcopy
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
-import torch
 from pytorch_lightning import LightningDataModule
-from torch import Tensor
-from torch.utils.data import DataLoader, Sampler, TensorDataset, random_split
-from torchvision.datasets import VisionDataset
+from torch.utils.data import DataLoader, Sampler, random_split
 
-from gendis.datasets import CausalBarMNIST, CausalMNIST, CausalDigitBarMNIST
-
+from . import CausalBarMNIST, CausalMNIST
+from .digitcolorbar import CausalDigitBarMNIST
 from .utils import summary_statistics
 
 
@@ -100,7 +95,7 @@ class MultiDistrDataModule(LightningDataModule):
         val_size: float = 0.05,
         transform=None,
         log_dir: Optional[Path] = None,
-        dataset_name: str = None
+        dataset_name: str = None,
     ) -> None:
         super().__init__()
         self.batch_size = batch_size
@@ -118,7 +113,7 @@ class MultiDistrDataModule(LightningDataModule):
         self.graph_type = graph_type
 
     def setup(self, stage: Optional[str] = None) -> None:
-        if self.dataset_name == 'digit':
+        if self.dataset_name == "digit":
             self.dataset = CausalDigitBarMNIST(
                 root=self.root,
                 graph_type=self.graph_type,
@@ -155,8 +150,9 @@ class MultiDistrDataModule(LightningDataModule):
             self.train_sampler = None
             self.val_sampler = None
 
+    @property
     def meta_label_strs(self):
-        return ["width", "color_digit", "color_bar", "label", "distr_idx"]
+        return self.dataset.meta_label_strs
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(

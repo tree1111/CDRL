@@ -323,7 +323,6 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         Tensor
             _description_
         """
-        pass
 
     def log_prob(
         self,
