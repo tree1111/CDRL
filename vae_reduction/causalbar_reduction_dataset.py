@@ -63,6 +63,7 @@ def make_vae_reduction_dataset(model, data_root, new_root):
         transform=data_transform,
         num_workers=1,
         train_size=1.0,
+        dataset_name='digit'
     )
 
     data_module.setup()
@@ -82,14 +83,14 @@ def make_vae_reduction_dataset(model, data_root, new_root):
     new_root = Path(new_root)
     if not os.path.exists(new_root):
         os.makedirs(new_root)
-    if not os.path.exists(new_root / "CausalBarMNIST/"):
-        os.makedirs(new_root / "CausalBarMNIST/")
-    if not os.path.exists(new_root / "CausalBarMNIST/" / "chain/"):
-        os.makedirs(new_root / "CausalBarMNIST/" / "chain/")
+    if not os.path.exists(new_root / "CausalDigitBarMNIST/"):
+        os.makedirs(new_root / "CausalDigitBarMNIST/")
+    if not os.path.exists(new_root / "CausalDigitBarMNIST/" / "chain/"):
+        os.makedirs(new_root / "CausalDigitBarMNIST/" / "chain/")
 
-    imgs_fname = new_root / "CausalBarMNIST/" / "chain/" / "chain-imgs-train.pt"
-    labels_fname = new_root / "CausalBarMNIST/" / "chain/" / "chain-labels-train.pt"
-    targets_fname = new_root / "CausalBarMNIST/" / "chain/" / "chain-targets-train.pt"
+    imgs_fname = new_root / "CausalDigitBarMNIST/" / "chain/" / "chain-imgs-train.pt"
+    labels_fname = new_root / "CausalDigitBarMNIST/" / "chain/" / "chain-labels-train.pt"
+    targets_fname = new_root / "CausalDigitBarMNIST/" / "chain/" / "chain-targets-train.pt"
 
     torch.save(all_x, imgs_fname)
     torch.save(all_labels, labels_fname)
@@ -125,6 +126,7 @@ if __name__ == "__main__":
         stratify_distrs=True,
         transform=None,
         num_workers=1,
+        dataset_name='digit'
     )
     new_data_module.setup()
 

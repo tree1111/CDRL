@@ -119,6 +119,7 @@ class VAE(pl.LightningModule):
             stratify_distrs=True,
             transform=self.data_transform,
             num_workers=1,
+            dataset_name='digit'
         )
         data_module.setup()
         self.data_module = data_module
