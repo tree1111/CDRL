@@ -10,7 +10,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Sampler, TensorDataset, random_split
 from torchvision.datasets import VisionDataset
 
-from gendis.datasets import CausalBarMNIST, CausalMNIST
+from gendis.datasets import CausalBarMNIST, CausalMNIST, CausalDigitBarMNIST
 
 from .utils import summary_statistics
 
@@ -100,11 +100,13 @@ class MultiDistrDataModule(LightningDataModule):
         val_size: float = 0.05,
         transform=None,
         log_dir: Optional[Path] = None,
+        dataset_name: str = None
     ) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.log_dir = Path(log_dir) if log_dir is not None else log_dir
+        self.dataset_name = dataset_name
 
         self.stratify_distrs = stratify_distrs
         self.transform = transform
@@ -116,13 +118,22 @@ class MultiDistrDataModule(LightningDataModule):
         self.graph_type = graph_type
 
     def setup(self, stage: Optional[str] = None) -> None:
-        self.dataset = CausalBarMNIST(
-            root=self.root,
-            graph_type=self.graph_type,
-            train=True,
-            n_jobs=None,
-            transform=self.transform,
-        )
+        if self.dataset_name == 'digit':
+            self.dataset = CausalDigitBarMNIST(
+                root=self.root,
+                graph_type=self.graph_type,
+                train=True,
+                n_jobs=None,
+                transform=self.transform,
+            )
+        else:
+            self.dataset = CausalBarMNIST(
+                root=self.root,
+                graph_type=self.graph_type,
+                train=True,
+                n_jobs=None,
+                transform=self.transform,
+            )
 
         train_size = int(self.train_size * len(self.dataset))
         val_size = int(self.val_size * (len(self.dataset) - train_size))
