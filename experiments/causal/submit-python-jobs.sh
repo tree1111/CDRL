@@ -6,7 +6,7 @@ SCRIPT_NAME="02_train_realnvp_model.py"
 SCRIPT_NAME="05_train_multiscale_normflows_causalnf.py"
 SCRIPT_NAME="06_vae_reduction_mlp_causalnf.py"
 SCRIPT_NAME="07_vae_reduction_digitbarv1_mlp_causalnf.py"
-# SCRIPT_NAME="08_vae_reduction_digitbarv2_mlp_causalnf.py"
+SCRIPT_NAME="08_vae_reduction_digitbarv2_mlp_causalnf.py"
 LOG_DIR="/home/adam2392/projects/logs/"
 
 # Number of GPUs available
@@ -18,7 +18,7 @@ NUM_GPUS=7
 # Define the training seeds to match np.linspace(1, 10000, 11, dtype=int)
 # training_seeds=(1 1000 2000 3000 4000 5000 6000 7000 8000 9000 10000)
 # Define the training seeds from 1 to 100
-training_seeds=($(seq 2 2))
+training_seeds=($(seq 3 3))
 
 # Loop over the training seeds and submit a job for each seed
 for i in "${!training_seeds[@]}"
@@ -39,7 +39,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  LOG_FILE="output_64hidden_mlpnf_vaereductionv1_COSINELR_32batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
+  LOG_FILE="output_64hidden_mlpnf_vaereductionv2_COSINELR_32batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
   nohup $CMD > $LOG_FILE 2>&1 &
 
   echo $TRAINING_SEED
