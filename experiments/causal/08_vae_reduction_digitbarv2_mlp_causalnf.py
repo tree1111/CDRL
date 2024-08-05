@@ -260,7 +260,7 @@ if __name__ == "__main__":
 
     root = Path(root)
     # XXX: change this depending on the dataset
-    new_root = root / "causalbar_reduction_datv2/"
+    new_root = root / "full-causal-mnistv2/causalbar_reduction_datv2/"
     print(args)
     # root = args.root_dir
     seed = args.seed
