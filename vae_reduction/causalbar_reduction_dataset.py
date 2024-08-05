@@ -119,7 +119,7 @@ if __name__ == "__main__":
     # make new data
     make_vae_reduction_dataset(model, data_root, new_root)
 
-    print('Loading the dataset...')
+    print("Loading the dataset...")
     # demo to load dataloader. please make sure transform is None. d
     new_data_module = MultiDistrDataModule(
         root=new_root,

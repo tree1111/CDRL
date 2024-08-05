@@ -303,7 +303,7 @@ if __name__ == "__main__":
         stratify_distrs=True,
         transform=None,
         num_workers=num_workers,
-        dataset_name='digitcolorbar',
+        dataset_name="digitcolorbar",
     )
     data_module.setup()
 
