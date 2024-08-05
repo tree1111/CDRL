@@ -49,7 +49,7 @@ class CausalDigitBarMNIST(Dataset):
             [0, 0, 0],
             [0, 0, 1],
             [0, 0, 1],
-            [1, 0, 0],
+            [0, 1, 0],
         ]
 
     def __len__(self):

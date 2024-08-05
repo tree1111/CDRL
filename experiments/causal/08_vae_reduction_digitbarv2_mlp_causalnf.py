@@ -260,7 +260,7 @@ if __name__ == "__main__":
 
     root = Path(root)
     # XXX: change this depending on the dataset
-    new_root = root / "causalbar_reduction_dat/"
+    new_root = root / "causalbar_reduction_datv2/"
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_name = (
-        f"64hidden-mlp-nf-onvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+        f"64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"

@@ -11,7 +11,7 @@ from torch.utils.data import TensorDataset
 from torchvision.datasets.mnist import MNIST
 from torchvision.transforms.functional import pil_to_tensor
 
-from .morphomnist import morpho, perturb
+from ..morphomnist import morpho, perturb
 
 
 def latent_scm_single_digit_params(graph, label, n_samples, intervention_idx=None):

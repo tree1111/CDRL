@@ -5,7 +5,7 @@ import numpy as np
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Sampler, random_split
 
-from . import CausalBarMNIST, CausalMNIST
+from .colorbar import CausalBarMNIST
 from .digitcolorbar import CausalDigitBarMNIST
 from .utils import summary_statistics
 
