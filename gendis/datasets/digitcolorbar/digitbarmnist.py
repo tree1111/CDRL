@@ -31,9 +31,14 @@ class CausalDigitBarMNIST(Dataset):
         self.labels = torch.load(
             root / self.__class__.__name__ / graph_type / f"{graph_type}-labels-train.pt"
         )
+        if isinstance(self.labels, list):
+            self.labels = torch.vstack(self.labels)
+
         self.intervention_targets = torch.load(
             root / self.__class__.__name__ / graph_type / f"{graph_type}-targets-train.pt"
         )
+        if isinstance(self.intervention_targets, list):
+            self.intervention_targets = torch.vstack(self.intervention_targets)
 
         if not all(
             [
