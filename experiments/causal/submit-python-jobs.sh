@@ -38,7 +38,7 @@ do
   
   # Optionally, you can use a job scheduler like `nohup` to run the command in the background
   # or `&` to run the command in the background
-  LOG_FILE="output_64hidden_mlpnf_vaereduction_COSINELR_32batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
+  LOG_FILE="output_64hidden_mlpnf_vaereductionv1_COSINELR_32batch_${SCRIPT_NAME}_seed_${TRAINING_SEED}.log"
   nohup $CMD > $LOG_FILE 2>&1 &
 
   echo $TRAINING_SEED
