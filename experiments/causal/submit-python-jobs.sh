@@ -5,6 +5,7 @@ SCRIPT_NAME="02_train_realnvp_model.py"
 # SCRIPT_NAME="03_train_realnvp_model_ind_noise.py"
 SCRIPT_NAME="05_train_multiscale_normflows_causalnf.py"
 SCRIPT_NAME="06_vae_reduction_mlp_causalnf.py"
+SCRIPT_NAME="07_vae_reduction_digitbarv1_mlp_causalnf.py"
 LOG_DIR="/home/adam2392/projects/logs/"
 
 # Number of GPUs available
