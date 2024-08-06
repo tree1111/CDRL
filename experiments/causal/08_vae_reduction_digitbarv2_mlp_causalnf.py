@@ -119,9 +119,9 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
     # independent noise with causal prior
     q0 = ClusteredCausalDistribution(
         adjacency_matrix=adjacency_matrix,
-        cluster_sizes=[9, 9, 9],
+        cluster_sizes=[4, 4, 4],
         input_shape=latent_shape,
-        ind_noise_dim=5,
+        ind_noise_dim=20,
         intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
         hard_interventions_per_distr=None,
     )
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_name = (
-        f"64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+        f"fourdims-64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
@@ -315,7 +315,9 @@ if __name__ == "__main__":
     for distr_idx in data_module.dataset.distribution_idx.unique():
         idx = np.argwhere(data_module.dataset.distribution_idx == distr_idx)[0][0]
         intervention_targets_per_distr.append(data_module.dataset.intervention_targets[idx])
-    print(idx)
+
+    unique_rows = np.unique(data_module.dataset.intervention_targets, axis=0)
+    print('Unique intervention targets: ', unique_rows)
 
     # epoch = 9306
     # step = 781788

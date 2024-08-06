@@ -152,7 +152,7 @@ def bar_digit_scm(intervention_idx, labels):
         color_digit = truncated_normal(0.5, 0.2, 0, 1, n_samples)
         # color_bar = truncated_normal(0.5, 0.2 / (color_digit + 0.5), 0, 1, n_samples)
         color_bar = truncated_normal(1.0 / (color_digit + 1), 0.1, 0, 1, n_samples)
-        causal_labels["intervention_targets"] = torch.Tensor([[0, 0, 0]] * n_samples)
+        causal_labels["intervention_targets"] = torch.Tensor([[0, 1, 0]] * n_samples)
     else:
         raise ValueError("Invalid intervention_idx. Must be 0, 1, 2 or 3.")
 

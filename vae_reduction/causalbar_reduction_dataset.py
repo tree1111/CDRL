@@ -91,7 +91,7 @@ def make_vae_reduction_dataset(model, data_root, new_root):
     imgs_fname = new_root / "CausalDigitBarMNIST/" / "chain/" / "chain-imgs-train.pt"
     labels_fname = new_root / "CausalDigitBarMNIST/" / "chain" / "chain-labels-train.pt"
     targets_fname = new_root / "CausalDigitBarMNIST/" / "chain" / "chain-targets-train.pt"
-
+    print('Saving new dataset to: ', imgs_fname)
     torch.save(all_x, imgs_fname)
     torch.save(all_labels, labels_fname)
     torch.save(all_targets, targets_fname)
