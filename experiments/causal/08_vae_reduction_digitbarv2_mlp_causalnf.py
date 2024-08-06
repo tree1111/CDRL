@@ -119,9 +119,9 @@ def make_model(adjacency_matrix, intervention_targets_per_distr):
     # independent noise with causal prior
     q0 = ClusteredCausalDistribution(
         adjacency_matrix=adjacency_matrix,
-        cluster_sizes=[4, 4, 4],
+        cluster_sizes=[8, 8, 8],
         input_shape=latent_shape,
-        ind_noise_dim=20,
+        ind_noise_dim=8,
         intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
         hard_interventions_per_distr=None,
     )
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 
     # output filename for the results
     model_name = (
-        f"fourdims-64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+        f"eightdims-64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     )
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
