@@ -238,3 +238,66 @@ def set_initial_noise_parameters(
         noise_params.append(nn.ParameterList(noise_means_e))
         noise_params_requires_grad.append(noise_means_requires_grad_e)
     return noise_params, noise_params_requires_grad
+
+
+def set_initial_confounder_parameters(
+    fix_mechanisms: bool,
+    intervention_targets: Tensor,
+    min_val: float,
+    max_val: float,
+    n_dim_per_node: list[int] = None,
+) -> tuple[list[ParameterList], list[list[bool]]]:
+    """Set initial noise parameters for each node's distribution and pass to device.
+
+    Parameters
+    ----------
+    dag : nx.DiGraph
+        Graph structure of the SCM.
+    fix_mechanisms : bool
+        Whether to allow fix the mechanisms and intervention targets,
+        so it is non-trainable.
+    intervention_targets : Tensor
+        Intervention targets for each distribution.
+    min_val : float
+        The minimum value for the noise parameter.
+    max_val : float
+        The maximum value for the noise parameter.
+    n_dim_per_node : list[int]
+        The number of dimensions for each node in the graph. Default is None,
+        corresponding to a single dimension for each node. If a node has more
+        than one dimension, it will have a separate noise parameter for each
+        dimension and sample from a multivariate distribution.
+
+    Returns
+    -------
+    noise_means : list[ParameterList]
+        The noise means for each variable in each distribution.
+    noise_stds : list[list[bool]]]
+        The noise stds for each variable in each distribution.
+    """
+    noise_means = []
+    noise_stds = []
+    num_distributions = intervention_targets.shape[0]
+
+    for idx in range(num_distributions):
+        noise_means_e = []
+        noise_stds_e = []
+
+        # this goes in the order of the nodes in the graph
+        # stored as an adjacency matrix
+        for idx in range(len(n_dim_per_node)):
+            n_dims = n_dim_per_node[idx]
+
+            # initialize the means
+            random_val = Uniform(min_val, max_val).sample((n_dims,))
+            params = nn.Parameter(random_val * torch.ones(1), requires_grad=not fix_mechanisms)
+            noise_means_e.append(params)
+
+            # initialize the stds
+            random_val = Uniform(min_val, max_val).sample((n_dims,))
+            params = nn.Parameter(random_val * torch.ones(1), requires_grad=not fix_mechanisms)
+            noise_stds_e.append(params)
+
+        noise_means.append(nn.ParameterList(noise_means_e))
+        noise_stds.append(nn.ParameterList(noise_stds_e))
+    return noise_means, noise_stds

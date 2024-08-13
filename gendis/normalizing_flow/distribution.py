@@ -9,7 +9,7 @@ from normflows.distributions import DiagGaussian
 from torch import Tensor
 from torch.nn.functional import gaussian_nll_loss
 
-from .utils import make_spline_flows, set_initial_edge_coeffs, set_initial_noise_parameters
+from .utils import make_spline_flows, set_initial_edge_coeffs, set_initial_noise_parameters, set_initial_confounder_parameters
 
 
 class MultidistrCausalFlow(nf.distributions.BaseDistribution, ABC):
@@ -47,6 +47,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         cluster_sizes: np.ndarray,
         intervention_targets_per_distr: Tensor,
         hard_interventions_per_distr: Tensor,
+        confounded_variables: list = None,
         input_shape=None,
         ind_noise_dim=None,
         fix_mechanisms: bool = False,
@@ -98,6 +99,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         self.hard_interventions_per_distr = hard_interventions_per_distr
         self.use_matrix = use_matrix
         self.input_shape = input_shape
+        self.confounded_variables = confounded_variables
 
         # if independent noise is defined, it is used in the last dimensions
         if ind_noise_dim is None:
@@ -168,6 +170,30 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             max_val=1.5,
             # device=device,
         )
+
+        # check confounded variables all are in the DAG
+        if self.confounded_variables is not None:
+            for node1, node2 in self.confounded_variables:
+                if node1 not in self.dag.nodes or node2 not in self.dag.nodes:
+                    raise ValueError(f"Confounded variable {node1}, or {node2} is not in the DAG.")
+        
+        # sample the confounding variable distribution parameters
+        confounder_cluster_sizes = []
+        for confounder in self.confounded_variables:
+            confounder_cluster_sizes.append(cluster_sizes[confounder[0]])
+        
+        confounder_means, confounder_stds = set_initial_confounder_parameters(
+            fix_mechanisms=fix_mechanisms,
+            intervention_targets=self.intervention_targets_per_distr,
+            min_val=-3.0,
+            max_val=3.0,
+            n_dim_per_node=confounder_cluster_sizes,
+        )
+
+        #
+        self.confounder_means = confounder_means
+        self.confounder_stds = confounder_stds
+
 
         self.coeff_values = nn.ParameterList(coeff_values)
         self.noise_means = nn.ParameterList(noise_means)
