@@ -14,6 +14,7 @@ class CausalDigitBarMNIST(Dataset):
         transform=None,
         target_transform=None,
         n_jobs=None,
+        subsample=None,
     ):
         self.root = root
         self.train = train
@@ -48,6 +49,11 @@ class CausalDigitBarMNIST(Dataset):
         ):
             raise ValueError("Data, labels and intervention targets must have the same length.")
 
+        if subsample is not None:
+            self.data = self.data[:subsample]
+            self.labels = self.labels[:subsample]
+            self.intervention_targets = self.intervention_targets[:subsample]
+            
     @property
     def intervention_targets_per_distr(self):
         return [

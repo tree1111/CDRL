@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch.nn as nn
 
-from .vae_base import VAE, Flatten, Stack
+from .vae import VAE, Flatten, Stack
 
 
 class Conv_VAE(VAE):
@@ -11,17 +11,26 @@ class Conv_VAE(VAE):
         channels: int,
         height: int,
         width: int,
-        lr: int,
         hidden_size: int,
         alpha: int,
         batch_size: int,
-        dataset: Optional[str] = None,
-        save_images: bool = False,
+        lr: int=1e-3,
+        lr_min: int=1e-7,
+        lr_scheduler: Optional[str] = None,
+        save_images: Optional[bool] = None,
         save_path: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
-            hidden_size, alpha, lr, batch_size, dataset, save_images, save_path, **kwargs
+            hidden_size,
+            alpha,
+            lr=lr,
+            lr_min=lr_min,
+            lr_scheduler=lr_scheduler,
+            batch_size=batch_size,
+            save_images=save_images,
+            save_path=save_path,
+            **kwargs,
         )
         # Our code now will look identical to the VAE class except that the
         # encoder and the decoder have been adjusted
