@@ -13,6 +13,7 @@ from torchvision.datasets import MNIST, FashionMNIST
 from torchvision.utils import save_image
 
 from gendis.datasets.data_module import MultiDistrDataModule
+# from vae_reduction.ds.data_module import MultiDistrDataModule
 
 
 class Flatten(nn.Module):
