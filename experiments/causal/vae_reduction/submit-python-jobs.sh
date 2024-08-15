@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory containing the Python script
-SCRIPT_NAME="01_train_model.py"
+SCRIPT_NAME="01_train_collider_model.py"
 
 LOG_DIR="/home/adam2392/projects/logs/"
 
