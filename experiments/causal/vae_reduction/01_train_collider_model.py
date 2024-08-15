@@ -11,8 +11,8 @@ import torch
 import torchvision
 from torchvision import transforms
 
-from gendis.variational.model import make_img_model
 from gendis.datasets import MultiDistrDataModule
+from gendis.variational.model import make_img_model
 
 
 # initialize args

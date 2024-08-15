@@ -161,8 +161,6 @@ def bar_digit_scm(intervention_idx, labels):
     return causal_labels
 
 
-
-
 # Placeholder for alter_img function
 def alter_digitbar_img(img, color_digit, color_bar, dtype=None):
     """Alter a MNIST image by changing the color of the digit and adding a color bar.

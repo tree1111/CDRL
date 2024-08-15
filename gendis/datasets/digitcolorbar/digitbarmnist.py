@@ -53,7 +53,7 @@ class CausalDigitBarMNIST(Dataset):
             self.data = self.data[:subsample]
             self.labels = self.labels[:subsample]
             self.intervention_targets = self.intervention_targets[:subsample]
-            
+
     @property
     def intervention_targets_per_distr(self):
         return [

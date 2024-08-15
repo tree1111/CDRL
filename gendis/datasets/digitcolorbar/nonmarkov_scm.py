@@ -1,6 +1,6 @@
 import torch
 
-from .scm import truncated_normal, skewed_normal
+from .scm import truncated_normal
 
 
 def nonmarkov_bar_digit_scm(intervention_idx, labels):
@@ -39,7 +39,7 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
     color_digit = torch.zeros(n_samples)
     color_bar = torch.zeros(n_samples)
 
-    U_cdigit_cbar = torch.normal(mean=0.5, std=0.2, size=(n_samples,1)).squeeze()
+    U_cdigit_cbar = torch.normal(mean=0.5, std=0.2, size=(n_samples, 1)).squeeze()
     color_digit = torch.zeros(n_samples)
 
     if intervention_idx == 0:
@@ -53,7 +53,9 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
     elif intervention_idx == 1:
         # Observational distribution
         # Color-digit will be a mixture of gaussians
-        color_digit_means = torch.linspace(0, 2, 10) # 10 possible digits, evenly spaced means from 0 to 1
+        color_digit_means = torch.linspace(
+            0, 2, 10
+        )  # 10 possible digits, evenly spaced means from 0 to 1
         color_digit_means = torch.flip(color_digit_means, [0]) / color_digit_means.sum()
         color_digit_stds = 0.15 * torch.ones(10)  # Standard deviation of 0.15 for each digit
         causal_labels["intervention_targets"] = torch.Tensor([[0, 1, 0]] * n_samples)

@@ -273,9 +273,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = (
-        f"eightdims-64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
-    )
+    model_name = f"eightdims-64hidden-mlp-nf-onvae-reductionv2-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
@@ -317,7 +315,7 @@ if __name__ == "__main__":
         intervention_targets_per_distr.append(data_module.dataset.intervention_targets[idx])
 
     unique_rows = np.unique(data_module.dataset.intervention_targets, axis=0)
-    print('Unique intervention targets: ', unique_rows)
+    print("Unique intervention targets: ", unique_rows)
 
     # epoch = 9306
     # step = 781788

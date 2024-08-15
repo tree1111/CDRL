@@ -6,7 +6,7 @@ def make_img_model(
     height=28,
     width=28,
     lr=5e-3,
-    lr_scheduler='cosine',
+    lr_scheduler="cosine",
     hidden_size=32,
     alpha=1024,
     batch_size=144,

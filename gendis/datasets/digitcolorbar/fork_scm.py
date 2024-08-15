@@ -1,6 +1,7 @@
 import torch
 
-from .scm import truncated_normal, skewed_normal
+from .scm import skewed_normal, truncated_normal
+
 
 def collider_bar_digit_scm(intervention_idx, labels):
     """Generate parameters for the SCM of the MNIST dataset with a bar following a collider structure.
@@ -43,9 +44,9 @@ def collider_bar_digit_scm(intervention_idx, labels):
         color_digit_stds = 0.15 * torch.ones(10)  # Standard deviation of 0.15 for each digit
 
         # Generate color_bar based on the intervention index
-        color_bar_means = torch.linspace(
-            0, 1, 10
-        )[::-1]  # 10 possible digits, evenly spaced means from 0 to 1
+        color_bar_means = torch.linspace(0, 1, 10)[
+            ::-1
+        ]  # 10 possible digits, evenly spaced means from 0 to 1
         color_bar_stds = 0.15 * torch.ones(10)  # Standard deviation of 0.15 for each digit
 
         causal_labels["intervention_targets"] = torch.Tensor([[0, 0, 0]] * n_samples)
@@ -80,13 +81,10 @@ def collider_bar_digit_scm(intervention_idx, labels):
             color_digit_means[i], color_digit_stds[i], 0, 1, num_samples
         )
 
-
     for i in range(10):
         mask = digit == i
         num_samples = mask.sum().item()
-        color_bar[mask] = truncated_normal(
-            color_bar_means[i], color_bar_stds[i], 0, 1, num_samples
-        )
+        color_bar[mask] = truncated_normal(color_bar_means[i], color_bar_stds[i], 0, 1, num_samples)
 
     causal_labels.update({"digit": digit, "color_digit": color_digit, "color_bar": color_bar})
 

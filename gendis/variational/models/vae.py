@@ -5,14 +5,8 @@ from typing import Optional
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, Dataset
-from torchvision.datasets import MNIST, FashionMNIST
 from torchvision.utils import save_image
 
-from gendis.datasets.data_module import MultiDistrDataModule
 
 
 class Flatten(nn.Module):

@@ -9,7 +9,12 @@ from normflows.distributions import DiagGaussian
 from torch import Tensor
 from torch.nn.functional import gaussian_nll_loss
 
-from .utils import make_spline_flows, set_initial_edge_coeffs, set_initial_noise_parameters, set_initial_confounder_parameters
+from .utils import (
+    make_spline_flows,
+    set_initial_confounder_parameters,
+    set_initial_edge_coeffs,
+    set_initial_noise_parameters,
+)
 
 
 class MultidistrCausalFlow(nf.distributions.BaseDistribution, ABC):
@@ -176,12 +181,12 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             for node1, node2 in self.confounded_variables:
                 if node1 not in self.dag.nodes or node2 not in self.dag.nodes:
                     raise ValueError(f"Confounded variable {node1}, or {node2} is not in the DAG.")
-        
+
         # sample the confounding variable distribution parameters
         confounder_cluster_sizes = []
         for confounder in self.confounded_variables:
             confounder_cluster_sizes.append(cluster_sizes[confounder[0]])
-        
+
         confounder_means, confounder_stds = set_initial_confounder_parameters(
             fix_mechanisms=fix_mechanisms,
             intervention_targets=self.intervention_targets_per_distr,
@@ -193,7 +198,6 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
         #
         self.confounder_means = confounder_means
         self.confounder_stds = confounder_stds
-
 
         self.coeff_values = nn.ParameterList(coeff_values)
         self.noise_means = nn.ParameterList(noise_means)

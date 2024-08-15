@@ -4,10 +4,7 @@ from pathlib import Path
 import torch
 from config.config import load_config
 from models import vae_models
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-from torchvision import datasets, transforms
+from torchvision import transforms
 from torchvision.utils import save_image
 
 from gendis.datasets import MultiDistrDataModule
@@ -91,7 +88,7 @@ def make_vae_reduction_dataset(model, data_root, new_root):
     imgs_fname = new_root / "CausalDigitBarMNIST/" / "chain/" / "chain-imgs-train.pt"
     labels_fname = new_root / "CausalDigitBarMNIST/" / "chain" / "chain-labels-train.pt"
     targets_fname = new_root / "CausalDigitBarMNIST/" / "chain" / "chain-targets-train.pt"
-    print('Saving new dataset to: ', imgs_fname)
+    print("Saving new dataset to: ", imgs_fname)
     torch.save(all_x, imgs_fname)
     torch.save(all_labels, labels_fname)
     torch.save(all_targets, targets_fname)

@@ -2,7 +2,6 @@ from typing import Optional
 
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
 
 
 class VAE(pl.LightningModule):

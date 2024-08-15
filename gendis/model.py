@@ -138,9 +138,9 @@ class NeuralClusteredASCMFlow(pl.LightningModule):
 
         print("\nLoss in training_step:", loss)
         print("BPD in training_step:", bpd)
-        self.log(f"train_loss", bpd, prog_bar=False)
-        self.log(f"loss", loss, prog_bar=False)
-        self.log(f"train_bpd", bpd, prog_bar=False)
+        self.log("train_loss", bpd, prog_bar=False)
+        self.log("loss", loss, prog_bar=False)
+        self.log("train_bpd", bpd, prog_bar=False)
 
         return bpd
 

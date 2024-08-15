@@ -9,7 +9,6 @@ from PIL import Image
 from scipy import stats
 from torch.utils.data import TensorDataset
 from torchvision.datasets.mnist import MNIST
-from torchvision.transforms.functional import pil_to_tensor
 
 from ..morphomnist import morpho, perturb
 

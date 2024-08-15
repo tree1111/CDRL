@@ -1,11 +1,8 @@
 from typing import List
 
 import normflows as nf
-import numpy as np
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.optim as optim
 
 from gendis.normalizing_flow.distribution import MultidistrCausalFlow
 
