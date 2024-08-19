@@ -198,5 +198,4 @@ if __name__ == "__main__":
         accelerator,
         checkpoint_root_dir,
         model_fname,
-        confounded_vars=confounded_vars,
     )
