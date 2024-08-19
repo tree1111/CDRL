@@ -12,6 +12,7 @@ def make_img_model(
     batch_size=144,
     save_images=False,
     save_path=None,
+    confounded_vars=None
 ):
     model = Conv_VAE(
         channels=channels,

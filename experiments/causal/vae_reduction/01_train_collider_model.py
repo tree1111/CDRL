@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 import torchvision
 from torchvision import transforms
@@ -70,10 +71,10 @@ def train_from_scratch(
     wandb = False
     logger = None
     check_val_every_n_epoch = 1
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="val_loss",
+        monitor="train_loss",
         every_n_epochs=check_val_every_n_epoch,
     )
 

@@ -2,6 +2,7 @@
 
 # Directory containing the Python script
 SCRIPT_NAME="01_train_collider_model.py"
+# SCRIPT_NAME="02_train_nonmarkov_model.py"
 
 LOG_DIR="/home/adam2392/projects/logs/"
 

@@ -109,8 +109,6 @@ class VAE(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, _, _ = batch
-        print(x.shape)
-        print(len(batch))
         mu, log_var, x_out = self.forward(x)
         kl_loss = (-0.5 * (1 + log_var - mu**2 - torch.exp(log_var)).sum(dim=1)).mean(dim=0)
         recon_loss_criterion = nn.MSELoss()
@@ -123,8 +121,6 @@ class VAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, _, _ = batch
-        print(x.shape)
-        print(len(batch))
         mu, log_var, x_out = self.forward(x)
 
         kl_loss = (-0.5 * (1 + log_var - mu**2 - torch.exp(log_var)).sum(dim=1)).mean(dim=0)

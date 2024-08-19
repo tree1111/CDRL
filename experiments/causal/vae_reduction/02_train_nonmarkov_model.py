@@ -73,7 +73,7 @@ def train_from_scratch(
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="val_loss",
+        monitor="train_loss",
         every_n_epochs=check_val_every_n_epoch,
     )
 
@@ -107,12 +107,10 @@ if __name__ == "__main__":
     parser = add_main_args(parser)
     args = parser.parse_args()
 
-    graph_type = "collider"
-    adjacency_matrix = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 0]])
-
-    # graph_type = "nonmarkov"
-    # adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
-    # confounded_vars = [[0, 2]]  # confounding between digit and color-bar
+    # color-digit -> color-bar; digit <--> color-bar
+    graph_type = "nonmarkov"
+    adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
+    confounded_vars = [[0, 2]]  # confounding between digit and color-bar
     latent_dim = len(adjacency_matrix)
 
     root = "/home/adam2392/projects/data/"
@@ -200,4 +198,5 @@ if __name__ == "__main__":
         accelerator,
         checkpoint_root_dir,
         model_fname,
+        confounded_vars=confounded_vars,
     )
