@@ -8,7 +8,6 @@ import torch.nn as nn
 from torchvision.utils import save_image
 
 
-
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)

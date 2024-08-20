@@ -5,15 +5,56 @@ import logging
 import random
 from pathlib import Path
 
+import normflows as nf
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torchvision
 from pytorch_lightning.callbacks import ModelCheckpoint
-from torchvision import transforms
 
+from gendis.causal.modelv3 import CausalFlowModel, CausalNormalizingFlow
 from gendis.datasets import MultiDistrDataModule
-from gendis.variational.model import make_img_model
+from gendis.normalizing_flow.distribution import ClusteredCausalDistribution
+
+
+def make_model(adjacency_matrix, intervention_targets_per_distr):
+    # Define flows
+    # Define list of flows
+    L = 2
+    K = 32
+    net_hidden_layers = 3
+    net_hidden_dim = 64
+    latent_dim = 32
+
+    flows = []
+    for i in range(K):
+        flows += [
+            nf.flows.AutoregressiveRationalQuadraticSpline(
+                latent_dim, net_hidden_layers, net_hidden_dim
+            )
+        ]
+
+    latent_shape = (32,)
+    # q0 = ClusteredCausalDistribution(
+    #     adjacency_matrix=adjacency_matrix,
+    #     cluster_sizes=generate_list(np.prod(latent_shape), latent_dim),
+    #     input_shape=latent_shape,
+    #     intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+    #     hard_interventions_per_distr=None,
+    # )
+
+    # independent noise with causal prior
+    q0 = ClusteredCausalDistribution(
+        adjacency_matrix=adjacency_matrix,
+        cluster_sizes=[8, 8, 8],
+        input_shape=latent_shape,
+        ind_noise_dim=8,
+        intervention_targets_per_distr=torch.vstack(intervention_targets_per_distr),
+        hard_interventions_per_distr=None,
+    )
+
+    # Construct flow model with the multiscale architecture
+    model = CausalNormalizingFlow(q0, flows)
+    return model
 
 
 # initialize args
@@ -54,27 +95,22 @@ def train_from_scratch(
     logging.basicConfig(level=logging.INFO)
     logging.info(f"\n\n\tsaving to {model_fname} \n")
 
-    # define the VAE model
-    model = make_img_model(
-        channels=n_chs,
-        height=height,
-        width=width,
-        lr=lr,
-        lr_scheduler=lr_scheduler,
-        hidden_size=hidden_size,
-        batch_size=batch_size,
+    nf_flow = make_model(
+        adjacency_matrix=adjacency_matrix,
+        intervention_targets_per_distr=intervention_targets_per_distr,
     )
+
+    model = CausalFlowModel(model=nf_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
 
     # 04b: Define the trainer for the model
     checkpoint_dir = Path(checkpoint_root_dir)
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
-    wandb = False
     logger = None
     check_val_every_n_epoch = 1
     checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
-        monitor="train_loss",
+        monitor="train_kld",
         every_n_epochs=check_val_every_n_epoch,
     )
 
@@ -110,10 +146,6 @@ if __name__ == "__main__":
 
     graph_type = "collider"
     adjacency_matrix = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 0]])
-
-    # graph_type = "nonmarkov"
-    # adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
-    # confounded_vars = [[0, 2]]  # confounding between digit and color-bar
     latent_dim = len(adjacency_matrix)
 
     root = "/home/adam2392/projects/data/"
@@ -136,7 +168,7 @@ if __name__ == "__main__":
 
     root = Path(root)
     # XXX: change this depending on the dataset
-    new_root = root  # / "causalbar_reduction_dat/"
+    new_root = root / "vae-reduction"
     print(args)
     # root = args.root_dir
     seed = args.seed
@@ -149,7 +181,7 @@ if __name__ == "__main__":
     print("Running with n_jobs:", n_jobs)
 
     # output filename for the results
-    model_name = f"vae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
+    model_name = f"nfonvae-reduction-cosinelr-batch{batch_size}-{graph_type}-seed={seed}"
     checkpoint_root_dir = Path(model_name)
     model_fname = f"{model_name}-model.pt"
 
@@ -159,16 +191,7 @@ if __name__ == "__main__":
     pl.seed_everything(seed, workers=True)
 
     # set up transforms for each image to augment the dataset
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            # torchvision.transforms.Resize((32, 32)),
-            # nf.utils.Scale(255.0 / 256.0),  # normalize the pixel values
-            # nf.utils.Jitter(1 / 256.0),  # apply random generation
-            # torchvision.transforms.RandomRotation(350),  # get random rotations
-        ]
-    )
+    transform = None
 
     # demo to load dataloader. please make sure transform is None. d
     data_module = MultiDistrDataModule(
@@ -184,14 +207,15 @@ if __name__ == "__main__":
     data_module.setup()
 
     intervention_targets_per_distr = []
-    # print(torch.vstack(data_module.dataset.labels).shape)
-    # print(torch.vstack(data_module.dataset.intervention_targets).shape)
-    # print(data_module.dataset.intervention_targets.shape)
-    # print(data_module.dataset.labels.shape)
-    # for distr_idx in data_module.dataset.distribution_idx.unique():
-    #     idx = np.argwhere(data_module.dataset.distribution_idx == distr_idx)[0][0]
-    #     intervention_targets_per_distr.append(data_module.dataset.intervention_targets[idx])
-    # print(idx)
+    print(data_module.dataset.intervention_targets.shape)
+    print(data_module.dataset.labels.shape)
+    for distr_idx in data_module.dataset.distribution_idx.unique():
+        idx = np.argwhere(data_module.dataset.distribution_idx == distr_idx)[0][0]
+        intervention_targets_per_distr.append(data_module.dataset.intervention_targets[idx])
+    print(idx)
+
+    unique_rows = np.unique(data_module.dataset.intervention_targets, axis=0)
+    print("Unique intervention targets: ", unique_rows)
 
     # train from scratch
     train_from_scratch(

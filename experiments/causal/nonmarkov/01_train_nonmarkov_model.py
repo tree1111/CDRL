@@ -9,7 +9,6 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import transforms
 
 from gendis.datasets import MultiDistrDataModule
@@ -71,7 +70,7 @@ def train_from_scratch(
     wandb = False
     logger = None
     check_val_every_n_epoch = 1
-    checkpoint_callback = ModelCheckpoint(
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=checkpoint_dir,
         save_top_k=5,
         monitor="train_loss",
@@ -108,12 +107,10 @@ if __name__ == "__main__":
     parser = add_main_args(parser)
     args = parser.parse_args()
 
-    graph_type = "collider"
-    adjacency_matrix = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 0]])
-
-    # graph_type = "nonmarkov"
-    # adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
-    # confounded_vars = [[0, 2]]  # confounding between digit and color-bar
+    # color-digit -> color-bar; digit <--> color-bar
+    graph_type = "nonmarkov"
+    adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
+    confounded_vars = [[0, 2]]  # confounding between digit and color-bar
     latent_dim = len(adjacency_matrix)
 
     root = "/home/adam2392/projects/data/"
