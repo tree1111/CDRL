@@ -70,7 +70,7 @@ def add_main_args(parser):
     parser.add_argument(
         "--accelerator", type=str, default="cuda", help="Accelerator (cpu, cuda, mps)"
     )
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--log_dir", type=str, default="./", help="Batch size")
     return parser
 
