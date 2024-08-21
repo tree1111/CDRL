@@ -1,4 +1,5 @@
 from abc import ABC
+from collections import defaultdict
 
 import networkx as nx
 import normflows as nf
@@ -11,6 +12,7 @@ from torch.nn.functional import gaussian_nll_loss
 
 from .utils import (
     make_spline_flows,
+    set_initial_confounder_edge_coeffs,
     set_initial_confounder_parameters,
     set_initial_edge_coeffs,
     set_initial_noise_parameters,
@@ -178,7 +180,10 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
 
         # check confounded variables all are in the DAG
         if self.confounded_variables is not None:
+            self.confounder_mapping = dict()
+
             for node1, node2 in self.confounded_variables:
+                # self.confounder_mapping[node1].append(node2)
                 if node1 not in self.dag.nodes or node2 not in self.dag.nodes:
                     raise ValueError(f"Confounded variable {node1}, or {node2} is not in the DAG.")
 
@@ -187,18 +192,46 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
             for confounder in self.confounded_variables:
                 confounder_cluster_sizes.append(cluster_sizes[confounder[0]])
 
+            # means and stds for each confounder (n_confounders)
             confounder_means, confounder_stds = set_initial_confounder_parameters(
-                fix_mechanisms=fix_mechanisms,
-                intervention_targets=self.intervention_targets_per_distr,
+                confounded_variables=self.confounded_variables,
                 min_val=-3.0,
                 max_val=3.0,
                 n_dim_per_node=confounder_cluster_sizes,
             )
 
+            # parametrize the trainable coefficients for the linear mechanisms
+            # this will be a full matrix of coefficients for each variable in the DAG
+            # (n_confounders, n_cluster_dims, 2), where the first index is the edge coefficient to apply
+            # the confounder to node1, and the second index is the edge coefficient to apply
+            # the confounder to node2 for (node1, node2) confounders
             #
-            self.confounder_means = confounder_means
-            self.confounder_stds = confounder_stds
+            # list of (n_confounders) length, with each consisting of a list of length 2
+            # with each inner element being an array of shape (n_cluster_dims)
+            confounder_coeff_values = set_initial_confounder_edge_coeffs(
+                self.confounded_variables,
+                min_val=-1.0,
+                max_val=1.0,
+                cluster_sizes=confounder_cluster_sizes,
+                use_matrix=self.use_matrix,
+                # device=device,
+            )
+
+            # map each node to a set of confounder indices
+            self.confounder_mapping = defaultdict(dict)
+
+            for idx, (node1, node2) in enumerate(self.confounded_variables):
+                self.confounder_mapping[node1][idx] = None
+                self.confounder_mapping[node2][idx] = None
+
+            # each is a list of n_confounders length, with the corresponding
+            # coefficients, or means, or stds for each confounder
+            self.confounder_coeff_values = nn.ParameterList(confounder_coeff_values)
+            self.confounder_means = nn.ParameterList(confounder_means)
+            self.confounder_stds = nn.ParameterList(confounder_stds)
         else:
+            self.confounder_mapping = None
+            self.confounder_coeff_values = None
             self.confounder_means = None
             self.confounder_stds = None
 
@@ -460,6 +493,22 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                     # print(parent_contribution.shape, parent_coeffs.shape, var.shape, v_env[:, parent_cluster_idx].shape)
 
                 # XXX: compute the contributions of the confounders
+                if self.confounded_variables is not None:
+                    # add the contribution for each confounder to this variable
+                    for confounder_idx in self.confounder_mapping[idx]:
+                        confounder_coeff = self.confounder_coeff_values[confounder_idx][str(idx)]
+                        confounder_means = self.confounder_means[confounder_idx]
+                        confounder_stds = self.confounder_stds[confounder_idx]
+
+                        # print('\n\nConfounded variable contribution')
+                        # print(confounder_means.shape, confounder_stds.shape)
+                        # print(confounder_coeff.shape)
+                        confounder_contribution = confounder_coeff * confounder_means
+
+                        # scale the variance based on the confounder contribution
+                        var *= confounder_coeff**2 * confounder_stds**2
+                else:
+                    confounder_contribution = 0.0
 
                 noise_coeff = self.coeff_values[idx][-1]  # .to(v_latent.device)
                 noise_contribution = noise_coeff * self.noise_means[noise_env_idx][idx]
@@ -469,7 +518,7 @@ class ClusteredCausalDistribution(MultidistrCausalFlow):
                 # parametrized normal distribution using the parents mean and variance
                 # print(parent_contribution, noise_contribution.shape, var.shape, v_env[:, cluster_idx].shape)
                 distr = torch.distributions.Normal(
-                    parent_contribution + noise_contribution, var.sqrt()
+                    parent_contribution + noise_contribution + confounder_contribution, var.sqrt()
                 )
                 log_p_distr = (distr.log_prob(v_env[:, cluster_idx]).sum(axis=1)).to(log_p.device)
                 log_p[env_mask] += log_p_distr

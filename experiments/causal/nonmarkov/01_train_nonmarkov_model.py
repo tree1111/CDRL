@@ -100,7 +100,7 @@ def train_from_scratch(
     nf_flow = make_model(
         adjacency_matrix=adjacency_matrix,
         intervention_targets_per_distr=intervention_targets_per_distr,
-        confounded_vars=confounded_vars
+        confounded_vars=confounded_vars,
     )
 
     model = CausalFlowModel(model=nf_flow, lr=lr, lr_min=lr_min, lr_scheduler=lr_scheduler)
