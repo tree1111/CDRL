@@ -4,9 +4,9 @@ from .scm import truncated_normal
 
 
 def nonmarkov_bar_digit_scm(intervention_idx, labels):
-    """Generate parameters for the SCM of the MNIST dataset with a bar following a collider structure.
+    """Generate parameters for the SCM of the MNIST dataset with a bar following a nonmarkov structure.
 
-    Color-digit will affect the color-bar.
+    color_bar <--> color_digit <- digit -> style
 
     Parameters
     ----------
@@ -14,7 +14,7 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
         The intervention index.
     labels : tensor of shape (n_samples,)
         The labels of each of the MNIST digit samples. This corresponds to the
-        digit.
+        digit. There is an intervention on the color-digit.
 
     Returns
     -------
@@ -34,6 +34,7 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
     causal_labels = dict()
 
     # Digit is just uniformly distributed more or less in the MNIST dataset
+    digit_idx = torch.arange(n_samples)
     digit = torch.Tensor(labels)
 
     color_digit = torch.zeros(n_samples)
@@ -59,12 +60,37 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
         color_digit_means = torch.flip(color_digit_means, [0]) / color_digit_means.sum()
         color_digit_stds = 0.15 * torch.ones(10)  # Standard deviation of 0.15 for each digit
         causal_labels["intervention_targets"] = torch.Tensor([[0, 1, 0]] * n_samples)
+    elif intervention_idx == 2:
+        # Define the skewed probabilities (higher for digits 5-9)
+        digit_probabilities = torch.tensor(
+            [0.01, 0.01, 0.01, 0.01, 0.01, 0.15, 0.2, 0.25, 0.3, 0.35]
+        )
+        # Normalize the probabilities to sum to 1 (optional but recommended)
+        digit_probabilities /= digit_probabilities.sum()
+
+        # probability of sampling each image
+        sampling_probabilities = digit_probabilities[labels]
+
+        # Sample with replacement using the skewed probabilities
+        digit_idx = torch.multinomial(sampling_probabilities, n_samples, replacement=True)
+        # Get the sampled labels
+        digit = labels[digit_idx]
+
+        # Observational distribution
+        # Color-digit will be a mixture of gaussians
+        color_digit_means = torch.linspace(
+            0, 1, 10
+        )  # 10 possible digits, evenly spaced means from 0 to 1
+        color_digit_stds = 0.15 * torch.ones(10)  # Standard deviation of 0.15 for each digit
+        causal_labels["intervention_targets"] = torch.Tensor([[1, 0, 0]] * n_samples)
     else:
         raise ValueError("Invalid intervention_idx. Must be 0, 1, 2 or 3.")
 
     # sample the color-digit conditioned on the digit
-    for i in range(10):
-        mask = digit == i
+    for i in range(5):
+        mask = digit == i * 2
+        mask_2 = (digit == i * 2 + 1)
+        mask = mask | mask_2
         num_samples = mask.sum().item()
         color_digit[mask] = truncated_normal(
             color_digit_means[i] + U_cdigit_cbar[mask], color_digit_stds[i], 0, 1, num_samples
@@ -72,6 +98,8 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
 
     # color-bar is caused by color-digit
     color_bar = truncated_normal(U_cdigit_cbar, 0.1, 0, 1, n_samples)
+
+    # color_bar <--> color_digit <- digit -> style
 
     causal_labels.update(
         {
@@ -82,4 +110,4 @@ def nonmarkov_bar_digit_scm(intervention_idx, labels):
         }
     )
 
-    return causal_labels
+    return causal_labels, digit_idx

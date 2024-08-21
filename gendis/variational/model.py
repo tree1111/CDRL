@@ -146,7 +146,8 @@ if __name__ == "__main__":
         / "vae-reduction"
         / f"vae-reduction-cosinelr-batch32-{graph_type}-seed={seed}"
         # / "epoch=98-step=783090.ckpt"
-        / "epoch=836-step=6620670.ckpt"
+        # / "epoch=1841-step=6216750.ckpt" # nonmarkov
+        / "epoch=836-step=6620670.ckpt"  # collider
     )
     # load vae model
     model = Conv_VAE.load_from_checkpoint(model_root)

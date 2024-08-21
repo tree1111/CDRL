@@ -111,11 +111,9 @@ if __name__ == "__main__":
     graph_type = "nonmarkov"
     adjacency_matrix = np.array([[0, 0, 0], [0, 0, 1], [0, 0, 0]])
     confounded_vars = [[0, 2]]  # confounding between digit and color-bar
-    latent_dim = len(adjacency_matrix)
 
     root = "/home/adam2392/projects/data/"
     accelerator = args.accelerator
-    intervention_types = [None, 1, 2, 3, 4]
     num_workers = 10
     gradient_clip_val = None  # 1.0
     batch_size = args.batch_size
