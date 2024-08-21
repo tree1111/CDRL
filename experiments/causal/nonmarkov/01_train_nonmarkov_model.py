@@ -163,12 +163,12 @@ if __name__ == "__main__":
     lr = 1e-3
     dataset_clip = None
 
-    root = "/Users/adam2392/pytorch_data/"
-    accelerator = "mps"
-    intervention_types = [None, 1]
-    num_workers = 1
-    batch_size = 10
-    dataset_clip = 1000
+    # root = "/Users/adam2392/pytorch_data/"
+    # accelerator = "mps"
+    # intervention_types = [None, 1]
+    # num_workers = 1
+    # batch_size = 10
+    # dataset_clip = 1000
 
     root = Path(root)
     # XXX: change this depending on the dataset
